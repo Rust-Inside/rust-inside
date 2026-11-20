@@ -1,6 +1,6 @@
 # Rust Inside 사용법
 
-[English](usage.md) | [한국어](usage.ko.md) | [저장소 개요](../README.ko.md)
+[English](usage.md) | [저장소 개요](../README.ko.md)
 
 SDK에서 공개할 Rust API와 배포 대상을 정하고, 시험 빌드를 거쳐 버전 태그로 배포합니다.
 

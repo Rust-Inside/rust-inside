@@ -1,6 +1,6 @@
 # Use Rust Inside
 
-[English](usage.md) | [한국어](usage.ko.md) | [Repository overview](../README.md)
+[한국어](usage.ko.md) | [Repository overview](../README.md)
 
 Choose the Rust APIs and destinations for your SDKs, run a trial build, and publish from a version tag.
 
