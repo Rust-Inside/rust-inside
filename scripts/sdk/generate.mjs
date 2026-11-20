@@ -212,10 +212,13 @@ async function writeWorkspace(out, members, sdk, crateDirectory, workspaceRoot) 
   await writeFile(join(out, 'sdk.json'), JSON.stringify(sdk, null, 2) + '\n');
 }
 
-export async function generate(manifestFile, outputDirectory) {
+export async function generate(manifestFile, outputDirectory, { rpc = false } = {}) {
   const manifestPath = await realpath(manifestFile);
   const config = parseManifest(JSON.parse(await readFile(manifestPath, 'utf8')));
-  if (!Object.keys(config.repositories).length) return null;
+  if (rpc && (config.backend !== 'jvm' || !config.api)) {
+    throw new Error('RPC generation requires backend "jvm" and a Rust api file');
+  }
+  if (!rpc && !Object.keys(config.repositories).length) return null;
   const crateFile = await realpath(resolve(dirname(manifestPath), config.crate));
   const crateDirectory = dirname(crateFile);
   const metadata = JSON.parse(runCargo(['metadata', '--no-deps', '--format-version', '1', '--manifest-path', crateFile], crateDirectory));
@@ -259,6 +262,19 @@ export async function generate(manifestFile, outputDirectory) {
     ...(surface.clients ? { clients: surface.clients, records: surface.records } : {}),
     ...(surface.clients?.length ? { kotlinCoroutinesVersion: '1.7.3' } : {}),
   });
+  if (rpc) {
+    const exports = api.exports.filter(fn => fn.platforms?.length === 1 && fn.platforms[0] === 'backend');
+    if (!exports.length) throw new Error('Declare at least one public RPC function with #[rust_inside::server]');
+    const integers = new Set(['i32', 'i64']);
+    for (const fn of exports) {
+      if (![...Object.values(fn.args), fn.returns].every(type => integers.has(type))) {
+        throw new Error(`RPC function ${fn.name} must use i32 or i64 for its arguments and return value`);
+      }
+    }
+    const sdk = { ...describe({ exports }, {}), version: producer.version };
+    await writeWorkspace(out, ['mobile'], sdk, crateDirectory, metadata.workspace_root);
+    return sdk;
+  }
   const scoped = api.exports.some(fn => fn.platforms) || api.records?.some(record => record.platforms) ||
     api.clients?.some(client => client.methods.some(method => method.platforms));
   const repositories = {};

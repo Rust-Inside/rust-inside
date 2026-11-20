@@ -36,6 +36,53 @@ Pass your account server's origin and the user's access token. The Swift binding
 
 To try the build, fork `sample-rust-core` and enable GitHub Actions in the fork. In **Actions → Release sample SDKs → Run workflow**, leave `release_tag` blank for a dry run. [Sample workflow](https://github.com/Rust-Inside/sample-rust-core/blob/main/.github/workflows/release.yml)
 
+## Call a Rust server function from Swift
+
+The calculator example defines one server function in Rust. The RPC generator reads its signature and builds the Swift client API and Spring route from it. [Rust source](../examples/swift-spring-rpc/src/api.rs) · [Manifest](../examples/swift-spring-rpc/rust-inside.json)
+
+```rust
+#[rust_inside::server]
+pub fn add(a: i32, b: i32) -> i64 {
+    i64::from(a) + i64::from(b)
+}
+```
+
+In Swift, create the client once with the server URL. The generated method takes two `Int32` arguments and returns an `Int64`.
+
+```swift
+import CalculatorSDK
+import Foundation
+
+let calculator = RpcClient(baseURL: serverURL)
+let result = try await calculator.add(2, 3) // 5
+```
+
+1. The Swift client sends `POST /rpc/add` with `{"a":2,"b":3}`.
+2. The generated Spring route reads the arguments and invokes Rust's `add` through the JVM SDK.
+3. Spring returns the JSON number `5`, which the Swift client decodes and returns to the caller.
+
+### Run the calculator example
+
+Use Node.js 22+, stable Rust, Python 3.11+, JDK 17+, Gradle 8.11.1, and Swift 6+. Run from the Rust Inside repository root.
+
+```sh
+bash examples/swift-spring-rpc/verify.sh
+```
+
+The script generates the client and server sources, builds the JVM JAR, and starts Spring on a temporary local port. It runs the Swift client and prints `5`. To keep the generated files, pass an empty output directory.
+
+```sh
+bash examples/swift-spring-rpc/verify.sh /tmp/rust-inside-rpc-example
+```
+
+In the output directory, `swift/` contains the Swift package, `spring/` contains the Spring project and routes, and `packages/` contains the JVM JAR. To generate the sources without running the example, use the following command.
+
+```sh
+node scripts/sdk/generate-rpc.mjs examples/swift-spring-rpc/rust-inside.json /tmp/rust-inside-rpc-sources
+```
+
+This local example uses the `api` module and the `jvm` backend. The RPC generator supports server-scoped synchronous functions with `i32` or `i64` arguments and return values. [Verification script](../examples/swift-spring-rpc/verify.sh)
+
 ## Release an SDK from your Rust repository
 
 1. Declare `pub mod api;` in `src/lib.rs`. Put the SDK functions and client methods in `src/api.rs` and keep helpers private. [Design the API](#design-the-rust-library)
