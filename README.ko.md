@@ -2,7 +2,7 @@
 
 [English](README.md) | [한국어](README.ko.md)
 
-Rust Inside는 Rust 라이브러리를 플랫폼별 SDK로 배포합니다.
+Rust Inside는 Rust 라이브러리용 멀티플랫폼 SDK 생성·배포 도구입니다.
 
 1. Rust 프로젝트에서 공개 API와 SDK 저장소를 지정합니다.
 2. 코어에 릴리스 워크플로를 추가하고 버전 태그를 푸시합니다. GitHub Actions가 태그의 커밋에서 바인딩을 생성하고 SDK를 빌드해 배포합니다.

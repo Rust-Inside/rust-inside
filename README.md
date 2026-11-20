@@ -2,7 +2,7 @@
 
 [English](README.md) | [한국어](README.ko.md)
 
-Rust Inside builds and publishes versioned SDKs from a Rust library.
+Rust Inside is cross-platform SDK build and release tooling for Rust libraries.
 
 1. Choose the public API and destination repositories in your Rust project.
 2. Add the release workflow and push a version tag. GitHub Actions generates bindings and publishes the packages built from that commit.
