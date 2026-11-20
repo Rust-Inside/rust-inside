@@ -2,77 +2,7 @@
 
 [English](usage.md) | [한국어](usage.ko.md) | [Repository overview](../README.md)
 
-Start with the published SDK, then use the release workflow below to package your own Rust library.
-
-<a id="플랫폼별-설치와-사용법"></a>
-
-## Install a platform SDK
-
-The sample packages are published as `v0.2.0`.
-
-| Platform | Package to install | Supported environment | Installation and usage |
-| --- | --- | --- | --- |
-| iOS | `SampleRustCoreSDK` via SwiftPM | iOS 18+, arm64 devices and simulators, Swift tools 6.0 | [Swift guide](https://github.com/Rust-Inside/sample-ios-sdk#readme) |
-| Android | `sample-rust-core-android` AAR via Gradle | Android API 23+, arm64-v8a and x86_64 | [Android guide](https://github.com/Rust-Inside/sample-android-sdk#readme) |
-| Flutter | `sample_rust_core_flutter` Git package via pub | iOS and Android, Flutter 3.38+, Dart 3.10 or later in the 3.x series | [Dart guide](https://github.com/Rust-Inside/sample-flutter-sdk#readme) |
-| Web | `sample-rust-core-web` via npm | Browsers with ES modules and WebAssembly | [Web guide](https://github.com/Rust-Inside/sample-web-sdk#readme) |
-| Kotlin/Spring | `sample-rust-core-jvm` JAR via Gradle | JVM 17+ on Linux with glibc (x86-64 or ARM64) or Apple Silicon macOS | [JVM server guide](https://github.com/Rust-Inside/sample-server-sdk#readme) |
-
-### Fetch a profile from Swift
-
-In Xcode, open **File → Add Package Dependencies** and enter `https://github.com/Rust-Inside/sample-ios-sdk.git`. Set **Exact Version** to `0.2.0` and add `SampleRustCoreSDK` to your app target. SwiftPM downloads the prebuilt XCFramework. [iOS release v0.2.0](https://github.com/Rust-Inside/sample-ios-sdk/releases/tag/v0.2.0)
-
-```swift
-import SampleRustCoreSDK
-
-func displayName(apiOrigin: String, accessToken: String) async throws -> String {
-    let account = AccountClient(baseUrl: apiOrigin, authorization: "Bearer \(accessToken)")
-    let profile = try await account.getMe()
-    return profile.displayName
-}
-```
-
-Pass your account server's origin and the user's access token. The Swift binding runs Rust's `AccountClient::get_me` inside the app. Rust sends `GET /v1/me` with the authorization header and decodes the response. Your server handles the route, authenticates the request, and returns `id`, `handle`, and `displayName` as JSON. [Sample core](https://github.com/Rust-Inside/sample-rust-core) · [Rust implementation for v0.2.0](https://github.com/Rust-Inside/sample-rust-core/blob/v0.2.0/src/api.rs) · [Spring controller example](https://github.com/Rust-Inside/sample-server-sdk#return-the-signed-in-users-profile)
-
-To try the build, fork `sample-rust-core` and enable GitHub Actions in the fork. In **Actions → Release sample SDKs → Run workflow**, keep `dry_run` enabled. Leave `release_tag` blank to build the selected branch, or enter `v0.2.0` to build that release. [Sample workflow](https://github.com/Rust-Inside/sample-rust-core/blob/main/.github/workflows/release.yml)
-
-## Call a Rust server function from Swift
-
-Mark a Rust function with `#[rust_inside::server]` to generate a Swift client method and a Spring route.
-
-```rust
-#[rust_inside::server]
-pub fn add(a: i32, b: i32) -> i64 {
-    i64::from(a) + i64::from(b)
-}
-```
-
-```swift
-let result = try await RpcClient(baseURL: serverURL).add(2, 3) // 5
-```
-
-### Submit a report as a signed-in user
-
-The report example defines `report`, `ReportReason`, and `ReportReceipt` in Rust. The generated Swift SDK takes the target and reason. The client already has the demo user's authorization header. [Rust API](../examples/swift-spring-report/src/api.rs) · [Swift caller](../examples/swift-spring-report/swift-example/Sources/RpcExample/main.swift)
-
-```swift
-let receipt = try await client.report("post-42", .spam)
-print(receipt.reportId)
-```
-
-1. Swift sends `POST /rpc/report` with the target and reason. Spring Security authenticates the request.
-2. The generated controller creates `RpcContext` from the authenticated principal and a server-generated request ID, then calls Rust through the JVM SDK.
-3. Rust builds the typed receipt. A Spring listener saves the report in H2 before the controller returns the receipt to Swift. [Security and storage](../examples/swift-spring-report/spring/src/main/kotlin/dev/rustinside/rpc/ReportConfiguration.kt)
-
-From the Rust Inside repository root, run the example with Node.js 22+, stable Rust, Python 3.11+, JDK 17+, Gradle 8.11.1, Swift 6+, and `curl`. The script starts Spring on loopback, generates a password for the demo user `martin`, and checks that the returned ID matches the single saved row. It also checks HTTP 401 for an unsigned-in request and HTTP 400 for a request with an extra reporter ID.
-
-```sh
-bash examples/swift-spring-report/verify.sh /tmp/rust-inside-report-example
-```
-
-Use an empty output directory to keep the generated packages and the `reports.mv.db` database. Run without a path for a temporary workspace.
-
-The report manifest requires `report` on both `ios` and `backend`. Generation checks the Swift SDK and Spring route, and the **Verify report RPC** CI job builds the Swift caller and calls the running Spring server. A Rust function can live anywhere behind the configured API module. An authenticated request to a running server that has no matching route returns HTTP 404. Deploy the new server before updating clients to call the route. [Report contract](../examples/swift-spring-report/rust-inside.json) · [CI workflow](../.github/workflows/check.yml)
+Choose the Rust APIs and destinations for your SDKs, run a trial build, and publish from a version tag.
 
 ## Release an SDK from your Rust repository
 
@@ -90,8 +20,6 @@ The workflow builds from the tagged Rust commit and generates bindings for the p
 ### Start with an optional project layout
 
 Copy the [core template](../templates/core) into a new repository if you want folders for `src/client/`, `src/server/`, and `src/common/`. Add platform-specific client modules when you have code for them. Put the public SDK entry points in `src/api.rs` and keep existing projects organized as they are.
-
-The report sample keeps the receipt and reason types in `src/common/` and the implementation in `src/server/`. Its public API exposes the function for RPC generation. [Report source layout](../examples/swift-spring-report/src)
 
 To show unanswered questions, the app passes all question IDs and the IDs the user has answered. Rust returns the remaining IDs in order. You can move the implementation across modules or crates and keep the same public function.
 
@@ -242,6 +170,38 @@ git push origin v0.1.0
 
 Rust Inside builds configured platforms with APIs to expose and publishes the same version once all packages are ready. The core repository's Actions summary lists the method names, arguments, and return types. [Release workflow](../.github/workflows/release-sdk.yml)
 
+<a id="플랫폼별-설치와-사용법"></a>
+
+## Install a platform SDK
+
+The sample packages are published as `v0.2.0`.
+
+| Platform | Package to install | Supported environment | Installation and usage |
+| --- | --- | --- | --- |
+| iOS | `SampleRustCoreSDK` via SwiftPM | iOS 18+, arm64 devices and simulators, Swift tools 6.0 | [Swift guide](https://github.com/Rust-Inside/sample-ios-sdk#readme) |
+| Android | `sample-rust-core-android` AAR via Gradle | Android API 23+, arm64-v8a and x86_64 | [Android guide](https://github.com/Rust-Inside/sample-android-sdk#readme) |
+| Flutter | `sample_rust_core_flutter` Git package via pub | iOS and Android, Flutter 3.38+, Dart 3.10 or later in the 3.x series | [Dart guide](https://github.com/Rust-Inside/sample-flutter-sdk#readme) |
+| Web | `sample-rust-core-web` via npm | Browsers with ES modules and WebAssembly | [Web guide](https://github.com/Rust-Inside/sample-web-sdk#readme) |
+| Kotlin/Spring | `sample-rust-core-jvm` JAR via Gradle | JVM 17+ on Linux with glibc (x86-64 or ARM64) or Apple Silicon macOS | [JVM server guide](https://github.com/Rust-Inside/sample-server-sdk#readme) |
+
+### Fetch a profile from Swift
+
+In Xcode, open **File → Add Package Dependencies** and enter `https://github.com/Rust-Inside/sample-ios-sdk.git`. Set **Exact Version** to `0.2.0` and add `SampleRustCoreSDK` to your app target. SwiftPM downloads the prebuilt XCFramework. [iOS release v0.2.0](https://github.com/Rust-Inside/sample-ios-sdk/releases/tag/v0.2.0)
+
+```swift
+import SampleRustCoreSDK
+
+func displayName(apiOrigin: String, accessToken: String) async throws -> String {
+    let account = AccountClient(baseUrl: apiOrigin, authorization: "Bearer \(accessToken)")
+    let profile = try await account.getMe()
+    return profile.displayName
+}
+```
+
+Pass your account server's origin and the user's access token. The Swift binding runs Rust's `AccountClient::get_me` inside the app. Rust sends `GET /v1/me` with the authorization header and decodes the response. Your server handles the route, authenticates the request, and returns `id`, `handle`, and `displayName` as JSON. [Sample core](https://github.com/Rust-Inside/sample-rust-core) · [Rust implementation for v0.2.0](https://github.com/Rust-Inside/sample-rust-core/blob/v0.2.0/src/api.rs) · [Spring controller example](https://github.com/Rust-Inside/sample-server-sdk#return-the-signed-in-users-profile)
+
+To try the build, fork `sample-rust-core` and enable GitHub Actions in the fork. In **Actions → Release sample SDKs → Run workflow**, keep `dry_run` enabled. Leave `release_tag` blank to build the selected branch, or enter `v0.2.0` to build that release. [Sample workflow](https://github.com/Rust-Inside/sample-rust-core/blob/main/.github/workflows/release.yml)
+
 <a id="nodejs나-rust-서버에서-쓰려면"></a>
 
 ## Use the library from a Node.js or Rust server
@@ -278,6 +238,46 @@ async fn display_name(api_origin: String, authorization: String) -> Result<Strin
     Ok(client.get_me().await?.display_name)
 }
 ```
+
+## Call a Rust server function from Swift
+
+Mark a Rust function with `#[rust_inside::server]` to generate a Swift client method and a Spring route.
+
+```rust
+#[rust_inside::server]
+pub fn add(a: i32, b: i32) -> i64 {
+    i64::from(a) + i64::from(b)
+}
+```
+
+```swift
+let result = try await RpcClient(baseURL: serverURL).add(2, 3) // 5
+```
+
+### Submit a report as a signed-in user
+
+The report example defines `report`, `ReportReason`, and `ReportReceipt` in Rust. The generated Swift SDK takes the target and reason. The client already has the demo user's authorization header. [Rust API](../examples/swift-spring-report/src/api.rs) · [Swift caller](../examples/swift-spring-report/swift-example/Sources/RpcExample/main.swift)
+
+```swift
+let receipt = try await client.report("post-42", .spam)
+print(receipt.reportId)
+```
+
+1. Swift sends `POST /rpc/report` with the target and reason. Spring Security authenticates the request.
+2. The generated controller creates `RpcContext` from the authenticated principal and a server-generated request ID, then calls Rust through the JVM SDK.
+3. Rust builds the typed receipt. A Spring listener saves the report in H2 before the controller returns the receipt to Swift. [Security and storage](../examples/swift-spring-report/spring/src/main/kotlin/dev/rustinside/rpc/ReportConfiguration.kt)
+
+The report sample keeps the receipt and reason types in `src/common/` and the implementation in `src/server/`. Its public API exposes the function for RPC generation. [Report source layout](../examples/swift-spring-report/src)
+
+From the Rust Inside repository root, run the example with Node.js 22+, stable Rust, Python 3.11+, JDK 17+, Gradle 8.11.1, Swift 6+, and `curl`. The script starts Spring on loopback, generates a password for the demo user `martin`, and checks that the returned ID matches the single saved row. It also checks HTTP 401 for an unsigned-in request and HTTP 400 for a request with an extra reporter ID.
+
+```sh
+bash examples/swift-spring-report/verify.sh /tmp/rust-inside-report-example
+```
+
+Use an empty output directory to keep the generated packages and the `reports.mv.db` database. Run without a path for a temporary workspace.
+
+The report manifest requires `report` on both `ios` and `backend`. Generation checks the Swift SDK and Spring route, and the **Verify report RPC** CI job builds the Swift caller and calls the running Spring server. A Rust function can live anywhere behind the configured API module. An authenticated request to a running server that has no matching route returns HTTP 404. Deploy the new server before updating clients to call the route. [Report contract](../examples/swift-spring-report/rust-inside.json) · [CI workflow](../.github/workflows/check.yml)
 
 ## License
 

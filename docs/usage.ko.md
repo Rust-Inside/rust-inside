@@ -2,75 +2,7 @@
 
 [English](usage.md) | [한국어](usage.ko.md) | [저장소 개요](../README.ko.md)
 
-앱이나 서버에 플랫폼별 SDK를 설치하면 Rust Inside가 생성한 바인딩을 통해 Rust 코드를 호출할 수 있습니다.
-
-## 플랫폼별 설치와 사용법
-
-샘플 `v0.2.0`을 설치할 플랫폼을 고르세요.
-
-| 플랫폼 | 앱이나 서버에 추가할 패키지 | 지원 환경 | 설치와 호출 예제 |
-| --- | --- | --- | --- |
-| iOS | SwiftPM의 `SampleRustCoreSDK` | iOS 18 이상, arm64 기기·시뮬레이터, Swift tools 6.0 | [Swift 가이드](https://github.com/Rust-Inside/sample-ios-sdk/blob/main/README.ko.md) |
-| Android | Gradle의 `sample-rust-core-android` AAR | API 23 이상, arm64-v8a·x86_64 | [Android 가이드](https://github.com/Rust-Inside/sample-android-sdk/blob/main/README.ko.md) |
-| Flutter | pub의 `sample_rust_core_flutter` Git 패키지 | iOS·Android, Flutter 3.38 이상, Dart 3.10 이상 4 미만 | [Dart 가이드](https://github.com/Rust-Inside/sample-flutter-sdk/blob/main/README.ko.md) |
-| 웹 | npm의 `sample-rust-core-web` | ES 모듈과 WebAssembly를 지원하는 브라우저 | [웹 가이드](https://github.com/Rust-Inside/sample-web-sdk/blob/main/README.ko.md) |
-| Kotlin/Spring | Gradle의 `sample-rust-core-jvm` JAR | JVM 17 이상, Linux glibc(x86-64·ARM64) 또는 Apple Silicon macOS | [JVM 서버 가이드](https://github.com/Rust-Inside/sample-server-sdk/blob/main/README.ko.md) |
-
-### Swift에서 프로필 조회하기
-
-Xcode에서 **File → Add Package Dependencies**를 열고 `https://github.com/Rust-Inside/sample-ios-sdk.git`를 입력하세요. **Exact Version** `0.2.0`의 `SampleRustCoreSDK`를 앱 타깃에 추가하면 SwiftPM이 빌드된 XCFramework를 받습니다. [iOS v0.2.0 릴리스](https://github.com/Rust-Inside/sample-ios-sdk/releases/tag/v0.2.0)
-
-```swift
-import SampleRustCoreSDK
-
-func displayName(apiOrigin: String, accessToken: String) async throws -> String {
-    let account = AccountClient(baseUrl: apiOrigin, authorization: "Bearer \(accessToken)")
-    let profile = try await account.getMe()
-    return profile.displayName
-}
-```
-
-계정 서버 주소와 사용자 액세스 토큰을 넘기세요. Swift의 `getMe()`는 앱에 포함된 Rust의 `AccountClient::get_me`를 실행합니다. Rust 클라이언트가 인증 헤더와 함께 `GET /v1/me`를 보내면, 서버는 요청을 인증하고 `id`, `handle`, `displayName`이 담긴 JSON을 반환합니다. 클라이언트는 이 JSON을 프로필 객체로 읽습니다. [샘플 코어](https://github.com/Rust-Inside/sample-rust-core/blob/main/README.ko.md) · [v0.2.0 Rust 구현](https://github.com/Rust-Inside/sample-rust-core/blob/v0.2.0/src/api.rs) · [Spring 컨트롤러 예제](https://github.com/Rust-Inside/sample-server-sdk/blob/main/README.ko.md#로그인한-사용자의-프로필-응답)
-
-`sample-rust-core`를 포크해 GitHub Actions를 켜세요. **Actions → Release sample SDKs → Run workflow**에서 `dry_run`을 켜 둡니다. `release_tag`를 비우면 선택한 브랜치를 빌드하고, `v0.2.0`을 입력하면 해당 릴리스를 빌드합니다. [샘플 워크플로](https://github.com/Rust-Inside/sample-rust-core/blob/main/.github/workflows/release.yml)
-
-## Swift에서 Rust 서버 함수 호출하기
-
-Rust 함수에 `#[rust_inside::server]`를 붙이면 RPC 생성기가 Swift 호출 메서드와 Spring 라우트를 만듭니다.
-
-```rust
-#[rust_inside::server]
-pub fn add(a: i32, b: i32) -> i64 {
-    i64::from(a) + i64::from(b)
-}
-```
-
-```swift
-let result = try await RpcClient(baseURL: serverURL).add(2, 3) // 5
-```
-
-### 로그인한 사용자로 신고하기
-
-Rust에 `report`, `ReportReason`, `ReportReceipt`를 정의합니다. 인증 헤더를 설정해 둔 Swift 클라이언트에는 신고 대상과 사유를 넘깁니다. [Rust API](../examples/swift-spring-report/src/api.rs) · [Swift 호출 코드](../examples/swift-spring-report/swift-example/Sources/RpcExample/main.swift)
-
-```swift
-let receipt = try await client.report("post-42", .spam)
-print(receipt.reportId)
-```
-
-1. Swift가 신고 대상과 사유를 담아 `POST /rpc/report`를 보냅니다. Spring Security가 요청을 인증합니다.
-2. 생성된 컨트롤러가 로그인한 사용자와 서버에서 생성한 요청 ID로 `RpcContext`를 만들고 JVM SDK를 통해 Rust를 호출합니다.
-3. Rust가 신고 응답을 만들면 Spring 리스너가 H2에 신고를 저장합니다. 컨트롤러는 저장이 끝난 뒤 Swift에 응답을 반환합니다. [인증과 저장 코드](../examples/swift-spring-report/spring/src/main/kotlin/dev/rustinside/rpc/ReportConfiguration.kt)
-
-Node.js 22 이상, 안정 버전 Rust, Python 3.11 이상, JDK 17 이상, Gradle 8.11.1, Swift 6 이상, `curl`을 준비한 뒤 Rust Inside 저장소 루트에서 실행하세요. 스크립트는 로컬에서 Spring을 띄우고 테스트 계정 `martin`의 비밀번호를 생성합니다. Swift가 받은 ID가 DB에 저장된 한 건과 일치하는지 확인하고, 비인증 요청의 401과 신고자 ID를 넣은 요청의 400도 확인합니다.
-
-```sh
-bash examples/swift-spring-report/verify.sh /tmp/rust-inside-report-example
-```
-
-빈 출력 디렉터리를 넘기면 생성된 패키지와 `reports.mv.db` 파일을 보관할 수 있습니다. 경로를 생략하면 임시 디렉터리에서 실행합니다.
-
-신고 예제는 `ios`와 `backend` 양쪽에 `report`를 필수로 선언합니다. 생성 단계에서 Swift 메서드와 Spring 라우트를 검사하고, CI의 **Verify report RPC** 작업에서 Swift 코드를 빌드해 실제로 띄운 Spring 서버를 호출합니다. Rust 함수는 설정한 API 모듈을 통해 공개한 위치 어디에 있어도 됩니다. 실행 중인 서버에 라우트가 빠져 있으면 인증된 요청은 HTTP 404를 받습니다. 새 라우트를 서버에 먼저 배포한 뒤 앱을 올리세요. [신고 API 계약](../examples/swift-spring-report/rust-inside.json) · [CI 워크플로](../.github/workflows/check.yml)
+SDK에서 공개할 Rust API와 배포 대상을 정하고, 시험 빌드를 거쳐 버전 태그로 배포합니다.
 
 ## 내 Rust 프로젝트에서 SDK 배포하기
 
@@ -86,8 +18,6 @@ bash examples/swift-spring-report/verify.sh /tmp/rust-inside-report-example
 ### 선택형 프로젝트 템플릿으로 시작하기
 
 새 저장소에는 [코어 템플릿](../templates/core)을 복사해 `src/client/`, `src/server/`, `src/common/` 구조로 시작할 수 있습니다. 플랫폼 전용 코드가 생기면 `client/`에 하위 모듈을 추가하세요. SDK에서 공개할 함수는 `src/api.rs`에 두면 되고, 기존 프로젝트는 지금 쓰는 구조를 유지할 수 있습니다.
-
-신고 예제는 신고 사유와 응답 타입을 `src/common/`에, 구현을 `src/server/`에 두고 공개 API에서 RPC 함수로 연결합니다. [신고 예제 소스](../examples/swift-spring-report/src)
 
 앱이 전체 문제 ID와 푼 문제 ID를 넘기면 코어가 남은 ID를 순서대로 반환합니다. 공개 함수의 이름과 서명을 유지하면 내부 구현을 여러 모듈이나 crate로 나눠도 같은 방식으로 호출할 수 있습니다.
 
@@ -227,6 +157,36 @@ git push origin v0.1.0
 
 공개 API가 있는 플랫폼의 빌드가 모두 끝나면 각 SDK 저장소에 같은 버전을 릴리스합니다. 메서드 이름과 인자·반환 타입은 코어 저장소의 Actions 실행 요약에 표시됩니다. [릴리스 워크플로](../.github/workflows/release-sdk.yml)
 
+## 플랫폼별 설치와 사용법
+
+샘플 `v0.2.0`을 설치할 플랫폼을 고르세요.
+
+| 플랫폼 | 앱이나 서버에 추가할 패키지 | 지원 환경 | 설치와 호출 예제 |
+| --- | --- | --- | --- |
+| iOS | SwiftPM의 `SampleRustCoreSDK` | iOS 18 이상, arm64 기기·시뮬레이터, Swift tools 6.0 | [Swift 가이드](https://github.com/Rust-Inside/sample-ios-sdk/blob/main/README.ko.md) |
+| Android | Gradle의 `sample-rust-core-android` AAR | API 23 이상, arm64-v8a·x86_64 | [Android 가이드](https://github.com/Rust-Inside/sample-android-sdk/blob/main/README.ko.md) |
+| Flutter | pub의 `sample_rust_core_flutter` Git 패키지 | iOS·Android, Flutter 3.38 이상, Dart 3.10 이상 4 미만 | [Dart 가이드](https://github.com/Rust-Inside/sample-flutter-sdk/blob/main/README.ko.md) |
+| 웹 | npm의 `sample-rust-core-web` | ES 모듈과 WebAssembly를 지원하는 브라우저 | [웹 가이드](https://github.com/Rust-Inside/sample-web-sdk/blob/main/README.ko.md) |
+| Kotlin/Spring | Gradle의 `sample-rust-core-jvm` JAR | JVM 17 이상, Linux glibc(x86-64·ARM64) 또는 Apple Silicon macOS | [JVM 서버 가이드](https://github.com/Rust-Inside/sample-server-sdk/blob/main/README.ko.md) |
+
+### Swift에서 프로필 조회하기
+
+Xcode에서 **File → Add Package Dependencies**를 열고 `https://github.com/Rust-Inside/sample-ios-sdk.git`를 입력하세요. **Exact Version** `0.2.0`의 `SampleRustCoreSDK`를 앱 타깃에 추가하면 SwiftPM이 빌드된 XCFramework를 받습니다. [iOS v0.2.0 릴리스](https://github.com/Rust-Inside/sample-ios-sdk/releases/tag/v0.2.0)
+
+```swift
+import SampleRustCoreSDK
+
+func displayName(apiOrigin: String, accessToken: String) async throws -> String {
+    let account = AccountClient(baseUrl: apiOrigin, authorization: "Bearer \(accessToken)")
+    let profile = try await account.getMe()
+    return profile.displayName
+}
+```
+
+계정 서버 주소와 사용자 액세스 토큰을 넘기세요. Swift의 `getMe()`는 앱에 포함된 Rust의 `AccountClient::get_me`를 실행합니다. Rust 클라이언트가 인증 헤더와 함께 `GET /v1/me`를 보내면, 서버는 요청을 인증하고 `id`, `handle`, `displayName`이 담긴 JSON을 반환합니다. 클라이언트는 이 JSON을 프로필 객체로 읽습니다. [샘플 코어](https://github.com/Rust-Inside/sample-rust-core/blob/main/README.ko.md) · [v0.2.0 Rust 구현](https://github.com/Rust-Inside/sample-rust-core/blob/v0.2.0/src/api.rs) · [Spring 컨트롤러 예제](https://github.com/Rust-Inside/sample-server-sdk/blob/main/README.ko.md#로그인한-사용자의-프로필-응답)
+
+`sample-rust-core`를 포크해 GitHub Actions를 켜세요. **Actions → Release sample SDKs → Run workflow**에서 `dry_run`을 켜 둡니다. `release_tag`를 비우면 선택한 브랜치를 빌드하고, `v0.2.0`을 입력하면 해당 릴리스를 빌드합니다. [샘플 워크플로](https://github.com/Rust-Inside/sample-rust-core/blob/main/.github/workflows/release.yml)
+
 ## Node.js나 Rust 서버에서 쓰려면
 
 공개 샘플의 서버 패키지는 JVM JAR입니다. **Node.js**를 써 보려면 `sample-rust-core` 복사본에서 `backend`를 `node`로 바꾸고, `repositories.backend`에 `your-org/sample-node-sdk`처럼 직접 관리하는 저장소를 지정하세요. 배포 파일은 CommonJS 패키지(`<name>-node-<version>.tgz`)입니다.
@@ -261,6 +221,46 @@ async fn display_name(api_origin: String, authorization: String) -> Result<Strin
     Ok(client.get_me().await?.display_name)
 }
 ```
+
+## Swift에서 Rust 서버 함수 호출하기
+
+Rust 함수에 `#[rust_inside::server]`를 붙이면 RPC 생성기가 Swift 호출 메서드와 Spring 라우트를 만듭니다.
+
+```rust
+#[rust_inside::server]
+pub fn add(a: i32, b: i32) -> i64 {
+    i64::from(a) + i64::from(b)
+}
+```
+
+```swift
+let result = try await RpcClient(baseURL: serverURL).add(2, 3) // 5
+```
+
+### 로그인한 사용자로 신고하기
+
+Rust에 `report`, `ReportReason`, `ReportReceipt`를 정의합니다. 인증 헤더를 설정해 둔 Swift 클라이언트에는 신고 대상과 사유를 넘깁니다. [Rust API](../examples/swift-spring-report/src/api.rs) · [Swift 호출 코드](../examples/swift-spring-report/swift-example/Sources/RpcExample/main.swift)
+
+```swift
+let receipt = try await client.report("post-42", .spam)
+print(receipt.reportId)
+```
+
+1. Swift가 신고 대상과 사유를 담아 `POST /rpc/report`를 보냅니다. Spring Security가 요청을 인증합니다.
+2. 생성된 컨트롤러가 로그인한 사용자와 서버에서 생성한 요청 ID로 `RpcContext`를 만들고 JVM SDK를 통해 Rust를 호출합니다.
+3. Rust가 신고 응답을 만들면 Spring 리스너가 H2에 신고를 저장합니다. 컨트롤러는 저장이 끝난 뒤 Swift에 응답을 반환합니다. [인증과 저장 코드](../examples/swift-spring-report/spring/src/main/kotlin/dev/rustinside/rpc/ReportConfiguration.kt)
+
+신고 예제는 신고 사유와 응답 타입을 `src/common/`에, 구현을 `src/server/`에 두고 공개 API에서 RPC 함수로 연결합니다. [신고 예제 소스](../examples/swift-spring-report/src)
+
+Node.js 22 이상, 안정 버전 Rust, Python 3.11 이상, JDK 17 이상, Gradle 8.11.1, Swift 6 이상, `curl`을 준비한 뒤 Rust Inside 저장소 루트에서 실행하세요. 스크립트는 로컬에서 Spring을 띄우고 테스트 계정 `martin`의 비밀번호를 생성합니다. Swift가 받은 ID가 DB에 저장된 한 건과 일치하는지 확인하고, 비인증 요청의 401과 신고자 ID를 넣은 요청의 400도 확인합니다.
+
+```sh
+bash examples/swift-spring-report/verify.sh /tmp/rust-inside-report-example
+```
+
+빈 출력 디렉터리를 넘기면 생성된 패키지와 `reports.mv.db` 파일을 보관할 수 있습니다. 경로를 생략하면 임시 디렉터리에서 실행합니다.
+
+신고 예제는 `ios`와 `backend` 양쪽에 `report`를 필수로 선언합니다. 생성 단계에서 Swift 메서드와 Spring 라우트를 검사하고, CI의 **Verify report RPC** 작업에서 Swift 코드를 빌드해 실제로 띄운 Spring 서버를 호출합니다. Rust 함수는 설정한 API 모듈을 통해 공개한 위치 어디에 있어도 됩니다. 실행 중인 서버에 라우트가 빠져 있으면 인증된 요청은 HTTP 404를 받습니다. 새 라우트를 서버에 먼저 배포한 뒤 앱을 올리세요. [신고 API 계약](../examples/swift-spring-report/rust-inside.json) · [CI 워크플로](../.github/workflows/check.yml)
 
 ## 라이선스
 
