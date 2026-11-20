@@ -123,7 +123,7 @@ jobs:
           node ../rust-inside/scripts/sdk/generate.mjs "$MANIFEST" ../generated
           GITHUB_REF="$SOURCE_REF" GITHUB_SHA="$SOURCE_SHA" node ../rust-inside/scripts/sdk/release-info.mjs ../generated/sdk.json
       - if: steps.generate.outputs.has_packages == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: generated-bindings
           path: generated/
@@ -156,7 +156,7 @@ jobs:
           token: *tools-token
           path: rust-inside
           persist-credentials: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: generated-bindings
           path: generated/
@@ -181,7 +181,7 @@ jobs:
         env: *cargo-auth
         run: bash ../rust-inside/scripts/sdk/build-jvm-native.sh ../generated "$RUNNER_TEMP/jvm-natives"
       - if: matrix.jvm_native
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: jvm-native-${{ matrix.platform }}
           path: ${{ runner.temp }}/jvm-natives/
@@ -212,28 +212,28 @@ jobs:
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.1.13356709"
           bash ../rust-inside/scripts/sdk/flutter-build.sh ../generated/platforms/flutter android "$RUNNER_TEMP/flutter-natives"
       - if: startsWith(matrix.platform, 'flutter-')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: native-${{ matrix.platform }}
           path: ${{ runner.temp }}/flutter-natives/
           if-no-files-found: error
           overwrite: true
       - if: matrix.platform == 'js' && needs.generate.outputs.backend == 'node' && fromJSON(needs.generate.outputs.repositories).backend
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: rust-inside-backend
           path: ${{ runner.temp }}/packages/backend/
           if-no-files-found: error
           overwrite: true
       - if: matrix.platform == 'js' && fromJSON(needs.generate.outputs.repositories).web
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: rust-inside-web
           path: ${{ runner.temp }}/packages/web/
           if-no-files-found: error
           overwrite: true
       - if: matrix.platform == 'ios' || matrix.platform == 'android'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: rust-inside-${{ matrix.platform }}
           path: ${{ runner.temp }}/packages/${{ matrix.platform }}/
@@ -258,11 +258,11 @@ jobs:
           token: *tools-token
           path: rust-inside
           persist-credentials: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: generated-bindings
           path: generated/
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: jvm-native-*
           merge-multiple: true
@@ -286,7 +286,7 @@ jobs:
         run: |
           bash ../rust-inside/scripts/sdk/build-jvm.sh ../generated "$VERSION" \
             "$RUNNER_TEMP/jvm-natives" "$RUNNER_TEMP/backend" linux-x86-64 linux-aarch64 darwin-aarch64
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: rust-inside-backend
           path: ${{ runner.temp }}/backend/
@@ -304,11 +304,11 @@ jobs:
           ref: ${{ job.workflow_sha }}
           token: *tools-token
           persist-credentials: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: generated-bindings
           path: ${{ runner.temp }}/generated/
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: native-flutter-*
           merge-multiple: true
@@ -329,7 +329,7 @@ jobs:
         run: |
           node scripts/sdk/flutter-package.mjs "$RUNNER_TEMP/generated/platforms/flutter" "$VERSION" "$RUNNER_TEMP/flutter-natives" "$RUNNER_TEMP/flutter-release"
           bash scripts/sdk/tests/consumer-flutter.sh "$RUNNER_TEMP/generated/platforms/flutter" "$RUNNER_TEMP/flutter-release/flutter-package" "$VERSION"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: rust-inside-flutter
           path: ${{ runner.temp }}/flutter-release/

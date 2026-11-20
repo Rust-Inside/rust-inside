@@ -52,7 +52,7 @@ runs:
           "GIT_CONFIG_VALUE_$((index+1))=https://github.com/Rust-Inside/rust-inside" \
           "GIT_CONFIG_COUNT=$((index+2))" CARGO_NET_GIT_FETCH_WITH_CLI=true \
           node "$tools/scripts/sdk/build-ios-package.mjs" "$MANIFEST" "$RUNNER_TEMP/ios-package"
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v6
       if: steps.build.outputs.repository != ''
       with:
         name: rust-inside-swift-package

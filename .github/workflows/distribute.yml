@@ -60,27 +60,27 @@ jobs:
         with:
           node-version: '22'
       - if: inputs.backend_repository
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: rust-inside-backend
           path: ${{ runner.temp }}/sdk-artifacts/rust-inside-backend
       - if: inputs.ios_repository
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: rust-inside-ios
           path: ${{ runner.temp }}/sdk-artifacts/rust-inside-ios
       - if: inputs.android_repository
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: rust-inside-android
           path: ${{ runner.temp }}/sdk-artifacts/rust-inside-android
       - if: inputs.web_repository
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: rust-inside-web
           path: ${{ runner.temp }}/sdk-artifacts/rust-inside-web
       - if: inputs.flutter_repository
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: rust-inside-flutter
           path: ${{ runner.temp }}/sdk-artifacts/rust-inside-flutter
