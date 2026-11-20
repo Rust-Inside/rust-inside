@@ -46,6 +46,17 @@ void main() {
   runApp(Directionality(textDirection: TextDirection.ltr, child: Text(symbol.toString())));
 }
 DART
+node --input-type=module - "$generated/sdk.json" >> lib/main.dart <<'NODE'
+import { readFileSync } from 'node:fs';
+
+const sdk = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+for (const [index, name] of (sdk.requiredApi?.flutter ?? []).entries()) {
+  const [symbol, method] = name.split('.');
+  const signature = method ? `api.${symbol} client` : '';
+  const reference = method ? `client.${method}` : `api.${symbol}`;
+  console.log(`Object checkRequiredApi${index}(${signature}) => ${reference};`);
+}
+NODE
 flutter build apk --debug
 apk=build/app/outputs/flutter-apk/app-debug.apk
 for abi in armeabi-v7a arm64-v8a x86_64; do

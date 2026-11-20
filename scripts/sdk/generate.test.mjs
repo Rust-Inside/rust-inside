@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -65,6 +65,12 @@ test('validates portable export names, signatures and every destination before g
     [{ exports: [{ path: 'a', name: 'init_sync' }] }, /portable snake_case/],
     [{ exports: [{ path: 'a', name: 'cost2' }, { path: 'b', name: 'cost_2' }] }, /Duplicate export/],
     [{ exports: [{ path: 'a', comment: 'typo' }] }, /Unknown/],
+    [{ requiredApi: null }, /requiredApi.*object/],
+    [{ requiredApi: { ios: [] } }, /requiredApi\.ios.*unique SDK names/],
+    [{ requiredApi: { ios: ['shippingCost', 'shippingCost'] } }, /requiredApi\.ios.*unique SDK names/],
+    [{ requiredApi: { ios: ['Type::name'] } }, /requiredApi\.ios.*unique SDK names/],
+    [{ requiredApi: { linux: ['shippingCost'] } }, /Unknown requiredApi field: linux/],
+    [{ requiredApi: { flutter: ['shippingCost'] } }, /flutter.*shippingCost.*not a generation target/],
   ]) assert.throws(() => parseManifest({ ...contract, ...overrides }), expected);
 });
 
@@ -270,12 +276,19 @@ impl InboxApi for Inbox {
 `);
   const manifest = join(root, 'rust-inside.json');
   const out = join(root, 'generated');
-  await writeFile(manifest, JSON.stringify({ backend: 'node', repositories: { ...repositories, flutter: 'team/flutter' }, api: 'src/api.rs' }));
+  await writeFile(manifest, JSON.stringify({
+    backend: 'node',
+    repositories: { ...repositories, flutter: 'team/flutter' },
+    requiredApi: { ios: ['Inbox.preview'], backend: ['Inbox.audit'] },
+    api: 'src/api.rs',
+  }));
   const sdk = await generate(manifest, out);
   assert.deepEqual(Object.keys(sdk.repositories).sort(), ['android','backend','flutter','ios']);
+  assert.deepEqual(sdk.requiredApi, { ios: ['Inbox.preview'], backend: ['Inbox.audit'] });
   assert.equal((await readdir(join(out, 'platforms'))).includes('web'), false);
   for (const target of Object.keys(sdk.repositories)) {
     const scoped = JSON.parse(await readFile(join(out, 'platforms', target, 'sdk.json'), 'utf8'));
+    assert.deepEqual(scoped.requiredApi, sdk.requiredApi[target] ? { [target]: sdk.requiredApi[target] } : undefined);
     assert.deepEqual(scoped.clients[0].methods.map(method => method.name), [target === 'backend' ? 'audit' : 'preview']);
     assert.deepEqual(scoped.records.map(record => record.name).sort(), target === 'backend' ? ['Audit'] : ['Badge', 'Preview']);
     if (['backend', 'ios', 'flutter'].includes(target)) {
@@ -284,8 +297,59 @@ impl InboxApi for Inbox {
       });
     }
   }
+  await writeFile(manifest, JSON.stringify({
+    backend: 'node', repositories, api: 'src/api.rs', requiredApi: { ios: ['Inbox.audit'] },
+  }));
+  await assert.rejects(generate(manifest, join(root, 'missing-ios')), /Required API missing from ios SDK: Inbox\.audit/);
   await writeFile(manifest, JSON.stringify({ backend: 'node', repositories: { web: 'team/web' }, api: 'src/api.rs' }));
   const empty = join(root, 'empty');
   assert.deepEqual((await generate(manifest, empty)).repositories, {});
   assert.deepEqual(await readdir(empty), ['sdk.json']);
+});
+
+test('warns for each configured SDK with an empty public API', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'rust-inside-empty-api-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, 'src'));
+  await writeFile(join(root, 'Cargo.toml'), '[package]\nname = "private-core"\nversion = "0.1.0"\nedition = "2024"\n');
+  await writeFile(join(root, 'src/lib.rs'), 'pub mod api;\n');
+  await writeFile(join(root, 'src/api.rs'), 'fn internal() {}\n');
+  const manifest = join(root, 'rust-inside.json');
+  const out = join(root, 'generated');
+  const cli = fileURLToPath(new URL('./generate.mjs', import.meta.url));
+  await writeFile(manifest, JSON.stringify({
+    backend: 'jvm', api: 'src/api.rs', repositories: { ios: 'team/ios', web: 'team/web', flutter: null },
+  }));
+  const run = spawnSync(process.execPath, [cli, manifest, out], {
+    encoding: 'utf8', env: { ...process.env, GITHUB_ACTIONS: 'true' },
+  });
+  assert.equal(run.status, 0, run.stderr);
+  const warnings = run.stdout.split('\n').filter(line => line.startsWith('::warning::'));
+  assert.equal(warnings.length, 2);
+  assert.match(warnings[0], /ios.*no public API/);
+  assert.match(warnings[1], /web.*no public API/);
+  assert.deepEqual(JSON.parse(await readFile(join(out, 'sdk.json'), 'utf8')).repositories, {});
+  assert.deepEqual(await readdir(out), ['sdk.json']);
+});
+
+test('requires named operations on the implicit Swift and JVM RPC destinations', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'rust-inside-required-rpc-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, 'src'));
+  await writeFile(join(root, 'Cargo.toml'), '[package]\nname = "reports"\nversion = "0.1.0"\nedition = "2024"\n');
+  await writeFile(join(root, 'src/lib.rs'), 'pub mod api;\n');
+  const api = join(root, 'src/api.rs');
+  const manifest = join(root, 'rust-inside.json');
+  const requiredApi = { ios: ['report'], backend: ['report'] };
+  await writeFile(manifest, JSON.stringify({ backend: 'jvm', api: 'src/api.rs', requiredApi }));
+  await writeFile(api, '#[rust_inside::server] pub fn report(value: i64) -> i64 { value }\n');
+  const sdk = await generate(manifest, join(root, 'generated'), { rpc: true });
+  assert.deepEqual(sdk.requiredApi, requiredApi);
+  await writeFile(api, '#[rust_inside::ios] pub fn report(value: i64) -> i64 { value }\n');
+  await assert.rejects(generate(manifest, join(root, 'scoped-out'), { rpc: true }), /Required API missing from ios SDK: report/);
+  await writeFile(api, 'fn report(value: i64) -> i64 { value }\n');
+  await assert.rejects(generate(manifest, join(root, 'private'), { rpc: true }), /Required API missing from ios SDK: report/);
+  assert.throws(() => parseManifest({
+    backend: 'jvm', api: 'src/api.rs', requiredApi: { web: ['report'] },
+  }, { rpc: true }), /web.*report.*not a generation target/);
 });

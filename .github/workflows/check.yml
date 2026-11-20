@@ -23,3 +23,30 @@ jobs:
           done
       - name: Verify generation, packaging and distribution
         run: node --test scripts/sdk/*.test.mjs
+
+  report-rpc:
+    name: Verify report RPC
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Set up stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Verify Swift calls Spring and persists a Rust report
+        run: bash examples/swift-spring-report/verify.sh

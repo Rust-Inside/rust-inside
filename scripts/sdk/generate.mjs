@@ -4,7 +4,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import { fileURLToPath } from 'node:url';
 import { repositoryName, requireBackend } from './distribute.mjs';
 import { discoverApi, selectedPlatforms } from './discover-api.mjs';
-import { wrapperSource } from './wrapper-source.mjs';
+import { rpcWrapperSource, wrapperSource } from './wrapper-source.mjs';
 
 const platforms = ['backend', 'ios', 'android', 'flutter', 'web'];
 const scalarTypes = ['bool', 'i8', 'u8', 'i16', 'u16', 'i32', 'u32', 'i64', 'u64', 'f32', 'f64', 'String'];
@@ -13,6 +13,7 @@ const rustKeywords = new Set(('as break const continue crate else enum extern fa
 const jsReserved = new Set(('await break case catch class const continue debugger default delete do else enum export extends false finally for function if implements import in instanceof interface let new null package private protected public return static super switch this throw true try typeof var void while with yield arguments eval then initSync').split(' '));
 const snake = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 const identifier = /^[A-Za-z_][A-Za-z_0-9]*$/;
+const apiName = /^[A-Za-z_][A-Za-z_0-9]*(?:\.[A-Za-z_][A-Za-z_0-9]*)?$/;
 const capitalize = word => word.charAt(0).toUpperCase() + word.slice(1);
 const camel = name => name.replace(/_([a-z0-9])/g, (_, next) => next.toUpperCase());
 
@@ -33,8 +34,21 @@ function uniqueName(names, name, label) {
   names.add(name);
 }
 
-export function parseManifest(input) {
-  fields(input, ['$schema', 'crate', 'name', 'backend', 'repositories', 'exports', 'api', 'uniffi'], 'manifest');
+function validateRequirements(requirements, destinations) {
+  fields(requirements, platforms, 'requiredApi');
+  for (const [platform, names] of Object.entries(requirements)) {
+    if (!Array.isArray(names) || !names.length || new Set(names).size !== names.length ||
+        names.some(name => typeof name !== 'string' || !apiName.test(name))) {
+      throw new Error(`requiredApi.${platform} must list unique SDK names such as report or AccountClient.getMe`);
+    }
+    if (!destinations.includes(platform)) {
+      throw new Error(`requiredApi.${platform} lists ${names.join(', ')} but ${platform} is not a generation target`);
+    }
+  }
+}
+
+export function parseManifest(input, { rpc = false } = {}) {
+  fields(input, ['$schema', 'crate', 'name', 'backend', 'repositories', 'exports', 'api', 'uniffi', 'requiredApi'], 'manifest');
   if (input.$schema !== undefined && (typeof input.$schema !== 'string' || input.$schema.length === 0)) {
     throw new Error('$schema must be a nonempty reference to the manifest schema');
   }
@@ -58,6 +72,7 @@ export function parseManifest(input) {
     repositories[platform] = repositoryName(destination);
   }
   if (input.uniffi !== undefined) {
+    if (input.requiredApi !== undefined) throw new Error('requiredApi does not support existing UniFFI bindings');
     fields(input.uniffi, ['crate'], 'uniffi');
     if (['exports', 'api', 'name', 'crate'].some(key => key in input)) {
       throw new Error('uniffi uses the public API and module name of its own crate; omit api, exports, name and top-level crate');
@@ -71,12 +86,17 @@ export function parseManifest(input) {
     }
     return { uniffi: true, crate: manifest, backend, repositories };
   }
+  const config = { crate, name: input.name, backend, repositories };
+  if (input.requiredApi !== undefined) {
+    validateRequirements(input.requiredApi, rpc ? ['ios', 'backend'] : Object.keys(repositories));
+    config.requiredApi = input.requiredApi;
+  }
   if (input.api !== undefined) {
     if (input.exports !== undefined) throw new Error('Choose exactly one of api or exports');
     if (typeof input.api !== 'string' || isAbsolute(input.api) || !input.api.endsWith('.rs')) {
       throw new Error('api must point to a Rust source file relative to the library Cargo.toml');
     }
-    return { crate, name: input.name, backend, repositories, api: input.api };
+    return { ...config, api: input.api };
   }
   if (!Array.isArray(input.exports) || !input.exports.length) throw new Error('Specify api or declare at least one function in exports');
   const names = new Set();
@@ -109,7 +129,7 @@ export function parseManifest(input) {
     if (entry.platforms !== undefined) api.platforms = selectedPlatforms(entry.platforms, path);
     return api;
   });
-  return { crate, name: input.name, backend, repositories, exports };
+  return { ...config, exports };
 }
 
 function packageNames(crate) {
@@ -147,6 +167,22 @@ function bindingsForPlatform(api, platform) {
   const exposed = returnTypes(clients);
   const records = api.records.filter(record => exposed.has(record.name) || (!used.has(record.name) && visible(record)));
   return { exports, clients, records };
+}
+
+function checkRequiredApi(platform, required, surface) {
+  if (!required?.length) return;
+  const names = new Set(surface.exports.map(fn => fn.jsName));
+  for (const client of surface.clients ?? []) {
+    for (const method of client.methods) names.add(`${client.name}.${method.jsName}`);
+  }
+  const missing = required.filter(name => !names.has(name));
+  if (missing.length) throw new Error(`Required API missing from ${platform} SDK: ${missing.join(', ')}`);
+}
+
+function warnEmptySdk(platform) {
+  const message = `${platform} is configured for release but has no public API. Skipping its package.`;
+  if (process.env.GITHUB_ACTIONS === 'true') console.log(`::warning::${message}`);
+  else console.warn(`Warning: ${message}`);
 }
 
 function adapterFor(platform, backend) {
@@ -200,7 +236,7 @@ async function writeWorkspace(out, members, sdk, crateDirectory, workspaceRoot) 
       if (asyncClients) cargo.push('wasm-bindgen-futures = "=0.4.80"');
     }
     await writeFile(join(directory, 'Cargo.toml'), cargo.join('\n') + '\n');
-    await writeFile(join(directory, 'src/lib.rs'), wrapperSource(sdk, mobile));
+    await writeFile(join(directory, 'src/lib.rs'), sdk.rpc ? rpcWrapperSource(sdk) : wrapperSource(sdk, mobile));
   }
 
   try {
@@ -214,7 +250,7 @@ async function writeWorkspace(out, members, sdk, crateDirectory, workspaceRoot) 
 
 export async function generate(manifestFile, outputDirectory, { rpc = false } = {}) {
   const manifestPath = await realpath(manifestFile);
-  const config = parseManifest(JSON.parse(await readFile(manifestPath, 'utf8')));
+  const config = parseManifest(JSON.parse(await readFile(manifestPath, 'utf8')), { rpc });
   if (rpc && (config.backend !== 'jvm' || !config.api)) {
     throw new Error('RPC generation requires backend "jvm" and a Rust api file');
   }
@@ -252,36 +288,78 @@ export async function generate(manifestFile, outputDirectory, { rpc = false } = 
   }
 
   const api = config.api
-    ? discoverApi(await realpath(resolve(crateDirectory, config.api)), libraryTarget.src_path)
+    ? discoverApi(await realpath(resolve(crateDirectory, config.api)), libraryTarget.src_path, { rpc, allowEmpty: !rpc || Boolean(config.requiredApi) })
     : { exports: config.exports };
 
   const names = packageNames(config.name ?? producer.name);
-  const describe = (surface, repositories) => ({
-    ...names, corePackage: producer.name, backend: config.backend, repositories,
-    exports: surface.exports,
-    ...(surface.clients ? { clients: surface.clients, records: surface.records } : {}),
-    ...(surface.clients?.length ? { kotlinCoroutinesVersion: '1.7.3' } : {}),
-  });
+  const describe = (surface, repositories) => {
+    const requiredApi = Object.fromEntries(Object.entries(config.requiredApi ?? {})
+      .filter(([platform]) => Object.hasOwn(repositories, platform)));
+    return {
+      ...names, corePackage: producer.name, backend: config.backend, repositories,
+      exports: surface.exports,
+      ...(surface.clients ? { clients: surface.clients, records: surface.records } : {}),
+      ...(surface.clients?.length ? { kotlinCoroutinesVersion: '1.7.3' } : {}),
+      ...(Object.keys(requiredApi).length ? { requiredApi } : {}),
+    };
+  };
   if (rpc) {
     const exports = api.exports.filter(fn => fn.platforms?.length === 1 && fn.platforms[0] === 'backend');
+    for (const [platform, required] of Object.entries(config.requiredApi ?? {})) {
+      checkRequiredApi(platform, required, { exports });
+    }
     if (!exports.length) throw new Error('Declare at least one public RPC function with #[rust_inside::server]');
-    const integers = new Set(['i32', 'i64']);
+    const scalarTypes = new Set(['i32', 'i64', 'String']);
+    const selected = new Set(exports.flatMap(fn => [...Object.values(fn.args), fn.returns]));
+    const records = api.records.filter(record => selected.has(record.name));
+    for (const record of records) {
+      for (const field of record.fields) selected.add(field.type);
+    }
+    const enums = api.enums.filter(item => selected.has(item.name));
+    if (enums.some(item => item.name === 'RpcContext')) {
+      throw new Error('RpcContext must be a record of server-supplied fields');
+    }
+    const values = new Set([...scalarTypes, ...enums.map(item => item.name)]);
+    for (const { name, fields } of records) {
+      const unsupported = fields.find(field => !values.has(field.type));
+      if (unsupported) throw new Error(`Unsupported RPC field type ${unsupported.type} for ${name}.${unsupported.name}`);
+    }
+    const types = new Set([...values, ...records.map(record => record.name)]);
     for (const fn of exports) {
-      if (![...Object.values(fn.args), fn.returns].every(type => integers.has(type))) {
-        throw new Error(`RPC function ${fn.name} must use i32 or i64 for its arguments and return value`);
+      const args = Object.values(fn.args);
+      if (![...args, fn.returns].every(type => types.has(type))) {
+        throw new Error(`Unsupported RPC argument or return type for ${fn.name}`);
+      }
+      if (args.filter(type => type === 'RpcContext').length > 1 || fn.returns === 'RpcContext') {
+        throw new Error(`${fn.name}: RpcContext is available once as a server-supplied argument`);
       }
     }
-    const sdk = { ...describe({ exports }, {}), version: producer.version };
+    const context = records.find(record => record.name === 'RpcContext');
+    if (context && (context.fields.length !== 2 || !['principal', 'request_id'].every(name =>
+      context.fields.some(field => field.name === name && field.type === 'String')))) {
+      throw new Error('RpcContext must declare public String fields principal and request_id');
+    }
+    const sdk = {
+      ...describe({ exports }, {}), rpc: true, records, enums, version: producer.version,
+      ...(Object.keys(config.requiredApi ?? {}).length ? { requiredApi: config.requiredApi } : {}),
+    };
     await writeWorkspace(out, ['mobile'], sdk, crateDirectory, metadata.workspace_root);
     return sdk;
   }
   const scoped = api.exports.some(fn => fn.platforms) || api.records?.some(record => record.platforms) ||
     api.clients?.some(client => client.methods.some(method => method.platforms));
+  const surfaces = Object.keys(config.repositories).map(platform => [platform, bindingsForPlatform(api, platform)]);
+  for (const [platform, surface] of surfaces) {
+    checkRequiredApi(platform, config.requiredApi?.[platform], surface);
+  }
   const repositories = {};
   const shared = new Set();
-  for (const [platform, repository] of Object.entries(config.repositories)) {
-    const surface = bindingsForPlatform(api, platform);
-    if (!surface.exports.length && !surface.clients?.length) continue;
+  for (const [platform, surface] of surfaces) {
+    if (!surface.exports.length && !surface.clients?.length) {
+      warnEmptySdk(platform);
+      continue;
+    }
+    const repository = config.repositories[platform];
     repositories[platform] = repository;
     const adapter = adapterFor(platform, config.backend);
     if (scoped || platform === 'flutter') {

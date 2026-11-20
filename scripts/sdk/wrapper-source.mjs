@@ -87,3 +87,57 @@ pub enum RustInsideCallError {
   source.push(...exports.map(fn => freeFunction(fn, native)));
   return source.join('\n\n') + '\n';
 }
+
+function rpcEnum({ name, path, variants }) {
+  const core = `sdk_core::${path}`;
+  const from = variants.map(variant => `            ${core}::${variant} => Self::${variant},`).join('\n');
+  const to = variants.map(variant => `            ${name}::${variant} => Self::${variant},`).join('\n');
+  return `#[derive(uniffi::Enum)]
+pub enum ${name} {
+${variants.map(variant => `    ${variant},`).join('\n')}
+}
+
+impl From<${core}> for ${name} {
+    fn from(value: ${core}) -> Self {
+        match value {
+${from}
+        }
+    }
+}
+
+impl From<${name}> for ${core} {
+    fn from(value: ${name}) -> Self {
+        match value {
+${to}
+        }
+    }
+}`;
+}
+
+function rpcRecord({ name, path, fields }) {
+  const core = `sdk_core::${path}`;
+  const assignments = fields.map(({ name }) => `            ${name}: value.${name}.into(),`).join('\n');
+  const convert = (from, to) => `impl From<${from}> for ${to} {
+    fn from(value: ${from}) -> Self {
+        Self {
+${assignments}
+        }
+    }
+}`;
+  return `#[derive(uniffi::Record)]
+pub struct ${name} {
+${fields.map(({ name, type }) => `    pub ${name}: ${type},`).join('\n')}
+}
+
+${convert(core, name)}
+
+${convert(name, core)}`;
+}
+
+export function rpcWrapperSource({ exports, records, enums }) {
+  const functions = exports.map(({ path, name, args, returns }) => `#[uniffi::export]
+pub fn ${name}(${parameters(args)}) -> ${returns} {
+    sdk_core::${path}(${Object.keys(args).map(arg => `${arg}.into()`).join(', ')}).into()
+}`);
+  return ['uniffi::setup_scaffolding!();', ...enums.map(rpcEnum), ...records.map(rpcRecord), ...functions].join('\n\n') + '\n';
+}

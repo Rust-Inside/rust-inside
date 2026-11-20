@@ -79,7 +79,30 @@ bash examples/swift-spring-rpc/verify.sh /tmp/rust-inside-rpc-example
 node scripts/sdk/generate-rpc.mjs examples/swift-spring-rpc/rust-inside.json /tmp/rust-inside-rpc-sources
 ```
 
-이 로컬 예제는 `api` 모듈과 `jvm` 백엔드를 사용합니다. RPC 생성기는 서버용 동기 함수 중 인자와 반환값이 `i32` 또는 `i64`인 함수를 지원합니다. [검증 스크립트](../examples/swift-spring-rpc/verify.sh)
+이 로컬 예제는 `api` 모듈과 `jvm` 백엔드를 사용합니다. RPC 생성기는 서버용 동기 함수의 인자와 반환값에 `i32`, `i64`, `String`, 값 없는 열거형, 스칼라나 열거형 필드로 구성된 레코드를 지원합니다. [검증 스크립트](../examples/swift-spring-rpc/verify.sh)
+
+### 로그인한 사용자로 신고하기
+
+Rust에 `report`, `ReportReason`, `ReportReceipt`를 정의합니다. 인증 헤더를 설정해 둔 Swift 클라이언트에는 신고 대상과 사유를 넘깁니다. [Rust API](../examples/swift-spring-report/src/api.rs) · [Swift 호출 코드](../examples/swift-spring-report/swift-example/Sources/RpcExample/main.swift)
+
+```swift
+let receipt = try await client.report("post-42", .spam)
+print(receipt.reportId)
+```
+
+1. Swift가 신고 대상과 사유를 담아 `POST /rpc/report`를 보냅니다. Spring Security가 요청을 인증합니다.
+2. 생성된 컨트롤러가 로그인한 사용자와 서버에서 생성한 요청 ID로 `RpcContext`를 만들고 JVM SDK를 통해 Rust를 호출합니다.
+3. Rust가 신고 응답을 만들면 Spring 리스너가 H2에 신고를 저장합니다. 컨트롤러는 저장이 끝난 뒤 Swift에 응답을 반환합니다. [인증과 저장 코드](../examples/swift-spring-report/spring/src/main/kotlin/dev/rustinside/rpc/ReportConfiguration.kt)
+
+계산기 예제의 도구와 `curl`을 준비하고 저장소 루트에서 실행하세요. 스크립트는 로컬에서 Spring을 띄우고 테스트 계정 `martin`의 비밀번호를 생성합니다. Swift가 받은 ID가 DB에 저장된 한 건과 일치하는지 확인하고, 비인증 요청의 401과 신고자 ID를 넣은 요청의 400도 확인합니다.
+
+```sh
+bash examples/swift-spring-report/verify.sh /tmp/rust-inside-report-example
+```
+
+빈 출력 디렉터리를 넘기면 생성된 패키지와 `reports.mv.db` 파일을 보관할 수 있습니다. 경로를 생략하면 임시 디렉터리에서 실행합니다.
+
+신고 예제는 `ios`와 `backend` 양쪽에 `report`를 필수로 선언합니다. 생성 단계에서 Swift 메서드와 Spring 라우트를 검사하고, CI의 **Verify report RPC** 작업에서 Swift 코드를 빌드해 실제로 띄운 Spring 서버를 호출합니다. Rust 함수는 설정한 API 모듈을 통해 공개한 위치 어디에 있어도 됩니다. 실행 중인 서버에 라우트가 빠져 있으면 인증된 요청은 HTTP 404를 받습니다. 새 라우트를 서버에 먼저 배포한 뒤 앱을 올리세요. [신고 API 계약](../examples/swift-spring-report/rust-inside.json) · [CI 워크플로](../.github/workflows/check.yml)
 
 ## 내 Rust 프로젝트에서 SDK 배포하기
 
@@ -91,6 +114,12 @@ node scripts/sdk/generate-rpc.mjs examples/swift-spring-rpc/rust-inside.json /tm
 워크플로는 태그의 Rust 커밋에서 바인딩과 플랫폼별 바이너리를 빌드해 함께 배포합니다. 브라우저용 바이너리는 WebAssembly입니다. 각 릴리스에 빌드에 사용한 코어 커밋을 기록합니다.
 
 ## Rust 코어 설계하기
+
+### 선택형 프로젝트 템플릿으로 시작하기
+
+새 저장소에는 [코어 템플릿](../templates/core)을 복사해 `src/client/`, `src/server/`, `src/common/` 구조로 시작할 수 있습니다. 플랫폼 전용 코드가 생기면 `client/`에 하위 모듈을 추가하세요. SDK에서 공개할 함수는 `src/api.rs`에 두면 되고, 기존 프로젝트는 지금 쓰는 구조를 유지할 수 있습니다.
+
+신고 예제는 신고 사유와 응답 타입을 `src/common/`에, 구현을 `src/server/`에 두고 공개 API에서 RPC 함수로 연결합니다. [신고 예제 소스](../examples/swift-spring-report/src)
 
 앱이 전체 문제 ID와 푼 문제 ID를 넘기면 코어가 남은 ID를 순서대로 반환합니다. 공개 함수의 이름과 서명을 유지하면 내부 구현을 여러 모듈이나 crate로 나눠도 같은 방식으로 호출할 수 있습니다.
 
@@ -149,6 +178,7 @@ SDK는 API 모듈에서 공개한 함수를 노출합니다. Rust 서버가 다�
 
 - 필수 항목인 `backend`에는 `jvm`(JAR), `node`(npm), `rust`(Cargo로 원본 crate 사용) 중 하나를 넣습니다. `rust`를 고르면 `repositories.backend`는 생략하거나 `null`로 둡니다.
 - 주소는 `owner/repo` 또는 GitHub HTTPS URL을 씁니다. 키를 생략하거나 `null`로 설정하면 건너뜁니다. 같은 주소를 쓰는 플랫폼의 패키지는 한 릴리스에 모입니다.
+- 배포 주소를 설정한 플랫폼에 공개 API가 없으면 경고를 출력하고 해당 패키지를 건너뜁니다. SDK에 반드시 들어가야 할 메서드는 `"requiredApi": {"ios": ["AccountClient.getMe"]}`처럼 생성된 이름을 적으세요. 필수 메서드가 빠지면 생성기가 실패하므로 릴리스 워크플로와 생성기를 실행하는 CI에서 잡힙니다.
 - 워크스페이스에서는 `"crate": "crates/my-core/Cargo.toml"`로 빌드할 멤버를 지정합니다. SDK 이름은 Cargo 패키지 이름을 따르며 `name`으로 바꿀 수 있습니다.
 - 편집기 자동 완성에는 코어 저장소에 스키마를 복사하고 `"$schema": "./rust-inside.schema.json"`을 추가하세요. [설정 스키마](../rust-inside.schema.json)
 

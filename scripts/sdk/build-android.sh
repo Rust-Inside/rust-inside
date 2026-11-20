@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-templates="$(cd "$(dirname "$0")/package-templates/android" && pwd)"
+scripts="$(cd "$(dirname "$0")" && pwd)"
+templates="$scripts/package-templates/android"
 workspace="${1:?Pass the generated workspace}"
 version="${2:?Pass the SDK version}"
 mkdir -p "${3:?Pass the output directory}"
@@ -56,8 +57,11 @@ if [[ -f "$workspace/LICENSE" ]]; then
   mkdir -p "$project/src/main/assets/$artifact"
   cp "$workspace/LICENSE" "$project/src/main/assets/$artifact/LICENSE"
 fi
+tasks=(:assembleRelease)
+contract_task="$(node "$scripts/tests/write-kotlin-api-check.mjs" "$workspace/sdk.json" android "$project")"
+if [[ -n "$contract_task" ]]; then tasks+=("$contract_task"); fi
 gradle --no-daemon -p "$project" -PsdkInputs="$stage" -PsdkNamespace="$namespace" \
-  -PsdkCoroutinesVersion="$coroutines_version" :assembleRelease
+  -PsdkCoroutinesVersion="$coroutines_version" "${tasks[@]}"
 
 aar="$project/build/outputs/aar/rust-inside-android-release.aar"
 for abi in arm64-v8a x86_64; do

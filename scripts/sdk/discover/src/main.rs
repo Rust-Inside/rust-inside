@@ -455,9 +455,40 @@ fn constructor(name: &str, impls: &[&ItemImpl]) -> Result<Value, String> {
 
 #[derive(Default)]
 struct Surface {
+    rpc: bool,
     exports: Vec<Value>,
     records: Vec<Value>,
     clients: Vec<Value>,
+    enums: Vec<Value>,
+}
+
+fn rpc_enum(item: &syn::ItemEnum, module: &str, scope: &[String]) -> Result<Value, String> {
+    let name = item.ident.to_string();
+    unconditional(&item.attrs, &name)?;
+    if !item.generics.params.is_empty()
+        || item.generics.where_clause.is_some()
+        || item.variants.is_empty()
+    {
+        return Err(format!("{name}: use a nonempty, nongeneric RPC enum"));
+    }
+    let mut variants = Vec::new();
+    for variant in &item.variants {
+        let case = variant.ident.to_string();
+        unconditional(&variant.attrs, &format!("{name}::{case}"))?;
+        if !matches!(variant.fields, Fields::Unit) || variant.discriminant.is_some() {
+            return Err(format!(
+                "{name}::{case}: RPC enum cases must be plain unit variants"
+            ));
+        }
+        variants.push(case);
+    }
+    let mut definition = json!({
+        "name": name, "path": format!("{module}::{name}"), "variants": variants
+    });
+    if !scope.is_empty() {
+        definition["platforms"] = json!(scope);
+    }
+    Ok(definition)
 }
 
 fn discover_items(
@@ -532,7 +563,10 @@ fn discover_items(
                 surface.exports.push(selected(&f.attrs, &name, scope, json!({"name":name, "path":format!("{module}::{name}"), "args":args, "returns":returns}))?);
             }
             Item::Enum(s) if public(&s.vis) => {
-                return Err(format!("{}: exported enums are unsupported", s.ident))
+                if !surface.rpc {
+                    return Err(format!("{}: exported enums are unsupported", s.ident));
+                }
+                surface.enums.push(rpc_enum(s, module, scope)?);
             }
             Item::Const(s) if public(&s.vis) => {
                 return Err(format!(
@@ -785,9 +819,17 @@ impl Discovery {
     }
 }
 
-fn discover(path: &Path, crate_root: Option<&Path>) -> Result<Value, String> {
+fn discover(
+    path: &Path,
+    crate_root: Option<&Path>,
+    rpc: bool,
+    allow_empty: bool,
+) -> Result<Value, String> {
     let mut discovery = Discovery {
-        surface: Surface::default(),
+        surface: Surface {
+            rpc,
+            ..Surface::default()
+        },
         open_files: BTreeSet::new(),
     };
     let empty = MarkerImports::default();
@@ -837,17 +879,33 @@ fn discover(path: &Path, crate_root: Option<&Path>) -> Result<Value, String> {
         exports,
         records,
         clients,
+        enums,
+        ..
     } = discovery.surface;
-    if exports.is_empty() && clients.is_empty() {
+    if !allow_empty && exports.is_empty() && clients.is_empty() {
         return Err("declare a public function or a client with async methods".into());
     }
-    Ok(json!({"module":"api", "exports":exports, "records":records, "clients":clients}))
+    let mut api = json!({"module":"api", "exports":exports, "records":records, "clients":clients});
+    if rpc {
+        api["enums"] = json!(enums);
+    }
+    Ok(api)
 }
 
 fn main() {
-    let mut args = env::args_os().skip(1).map(PathBuf::from);
-    let path = args.next().expect("pass the Rust API file path");
-    let result = discover(&path, args.next().as_deref());
+    let mut args: Vec<_> = env::args_os().skip(1).map(PathBuf::from).collect();
+    let allow_empty = args
+        .last()
+        .is_some_and(|arg| arg == Path::new("--allow-empty"));
+    if allow_empty {
+        args.pop();
+    }
+    let rpc = args.last().is_some_and(|arg| arg == Path::new("--rpc"));
+    if rpc {
+        args.pop();
+    }
+    let path = args.first().expect("pass the Rust API file path");
+    let result = discover(path, args.get(1).map(PathBuf::as_path), rpc, allow_empty);
     match result {
         Ok(api) => println!("{api}"),
         Err(error) => {

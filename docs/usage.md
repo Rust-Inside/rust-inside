@@ -81,7 +81,30 @@ In the output directory, `swift/` contains the Swift package, `spring/` contains
 node scripts/sdk/generate-rpc.mjs examples/swift-spring-rpc/rust-inside.json /tmp/rust-inside-rpc-sources
 ```
 
-This local example uses the `api` module and the `jvm` backend. The RPC generator supports server-scoped synchronous functions with `i32` or `i64` arguments and return values. [Verification script](../examples/swift-spring-rpc/verify.sh)
+This local example uses the `api` module and the `jvm` backend. The RPC generator supports server-scoped synchronous functions with `i32`, `i64`, `String`, unit enums, and records with scalar or enum fields. [Verification script](../examples/swift-spring-rpc/verify.sh)
+
+### Submit a report as a signed-in user
+
+The report example defines `report`, `ReportReason`, and `ReportReceipt` in Rust. The generated Swift SDK takes the target and reason. The client already has the demo user's authorization header. [Rust API](../examples/swift-spring-report/src/api.rs) · [Swift caller](../examples/swift-spring-report/swift-example/Sources/RpcExample/main.swift)
+
+```swift
+let receipt = try await client.report("post-42", .spam)
+print(receipt.reportId)
+```
+
+1. Swift sends `POST /rpc/report` with the target and reason. Spring Security authenticates the request.
+2. The generated controller creates `RpcContext` from the authenticated principal and a server-generated request ID, then calls Rust through the JVM SDK.
+3. Rust builds the typed receipt. A Spring listener saves the report in H2 before the controller returns the receipt to Swift. [Security and storage](../examples/swift-spring-report/spring/src/main/kotlin/dev/rustinside/rpc/ReportConfiguration.kt)
+
+Run from the repository root with the calculator example's tools and `curl`. The script starts Spring on loopback, generates a password for the demo user `martin`, and checks that the returned ID matches the single saved row. It also checks HTTP 401 for an unsigned-in request and HTTP 400 for a request with an extra reporter ID.
+
+```sh
+bash examples/swift-spring-report/verify.sh /tmp/rust-inside-report-example
+```
+
+Use an empty output directory to keep the generated packages and the `reports.mv.db` database. Run without a path for a temporary workspace.
+
+The report manifest requires `report` on both `ios` and `backend`. Generation checks the Swift SDK and Spring route, and the **Verify report RPC** CI job builds the Swift caller and calls the running Spring server. A Rust function can live anywhere behind the configured API module. An authenticated request to a running server that has no matching route returns HTTP 404. Deploy the new server before updating clients to call the route. [Report contract](../examples/swift-spring-report/rust-inside.json) · [CI workflow](../.github/workflows/check.yml)
 
 ## Release an SDK from your Rust repository
 
@@ -95,6 +118,12 @@ The workflow builds from the tagged Rust commit and generates bindings for the p
 <a id="rust-코어-설계하기"></a>
 
 ## Design the Rust library
+
+### Start with an optional project layout
+
+Copy the [core template](../templates/core) into a new repository if you want folders for `src/client/`, `src/server/`, and `src/common/`. Add platform-specific client modules when you have code for them. Put the public SDK entry points in `src/api.rs` and keep existing projects organized as they are.
+
+The report sample keeps the receipt and reason types in `src/common/` and the implementation in `src/server/`. Its public API exposes the function for RPC generation. [Report source layout](../examples/swift-spring-report/src)
 
 To show unanswered questions, the app passes all question IDs and the IDs the user has answered. Rust returns the remaining IDs in order. You can move the implementation across modules or crates and keep the same public function.
 
@@ -157,6 +186,7 @@ Place `rust-inside.json` next to the library's `Cargo.toml`. Point `api` to the 
 
 - `backend` is required. Choose `jvm` for a JAR or `node` for a Node.js npm package. If a Rust server uses the library directly through Cargo, choose `rust` and omit `repositories.backend` or set it to `null`.
 - Use `owner/repo` or a GitHub HTTPS URL. Omit the key or set it to `null` to skip a platform. Packages for platforms that share a repository appear in one release.
+- A configured platform with no public API emits a warning and skips its package. To make an SDK method mandatory, list its generated name under that platform in `requiredApi`, such as `"requiredApi": {"ios": ["AccountClient.getMe"]}`. Generation fails if a required name is missing. The release workflow and any CI job running the generator enforce this check.
 - In a Cargo workspace, use `"crate": "crates/my-core/Cargo.toml"` to select the member. Set `name` to override its Cargo package name.
 - For editor completion, copy the schema into your core repository and set `"$schema": "./rust-inside.schema.json"`. [Configuration schema](../rust-inside.schema.json)
 

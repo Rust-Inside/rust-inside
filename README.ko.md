@@ -29,7 +29,7 @@ Rust Inside는 Rust 라이브러리를 플랫폼별 SDK로 배포합니다.
 
 Swift 호출 예제, 공개 API 설정, 첫 SDK 배포 절차를 확인하세요. [한국어 가이드](docs/usage.ko.md) · [English guide](docs/usage.md)
 
-[Swift·Spring RPC 예제](docs/usage.ko.md#swift에서-rust-서버-함수-호출하기)
+[Swift·Spring RPC 예제](docs/usage.ko.md#swift에서-rust-서버-함수-호출하기) · [로그인한 사용자로 신고하기](docs/usage.ko.md#로그인한-사용자로-신고하기)
 
 ## 라이선스
 

@@ -44,5 +44,17 @@ test('an existing UniFFI crate selects its own API and an optional iOS destinati
   for (const overrides of [
     { api: 'src/api.rs' }, { exports: [] }, { name: 'unused' }, { crate: 'Cargo.toml' },
     { uniffi: {} }, { uniffi: { crate: '/tmp/Cargo.toml' } }, { repositories: { web: 'team/web' } },
+    { requiredApi: { ios: ['report'] } },
   ]) assert.throws(() => parseManifest({ ...base, ...overrides }));
+});
+
+test('the editor accepts SDK symbols as required API per platform', () => {
+  const required = schema.properties.requiredApi;
+  assert.deepEqual(required.propertyNames.enum, Object.keys(schema.properties.repositories.properties));
+  assert.equal(required.additionalProperties.minItems, 1);
+  assert.equal(required.additionalProperties.uniqueItems, true);
+  const symbol = new RegExp(required.additionalProperties.items.pattern);
+  assert.ok(symbol.test('report'));
+  assert.ok(symbol.test('AccountClient.getMe'));
+  assert.ok(!symbol.test('api::report'));
 });

@@ -1,0 +1,21 @@
+{
+  "backend": "jvm",
+  "repositories": {},
+  "exports": [
+    {
+      "path": "api::format_handle",
+      "platforms": ["app", "web"],
+      "args": [{ "name": "handle", "type": "String" }],
+      "returns": "String"
+    },
+    {
+      "path": "api::same_handle",
+      "platforms": ["server"],
+      "args": [
+        { "name": "left", "type": "String" },
+        { "name": "right", "type": "String" }
+      ],
+      "returns": "bool"
+    }
+  ]
+}

@@ -1,9 +1,29 @@
-import { mkdir, readdir } from 'node:fs/promises';
+import { mkdir, readdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generate } from './generate.mjs';
 import { writeSpringRpcServer } from './rpc-spring.mjs';
 import { writeSwiftRpcPackage } from './rpc-swift.mjs';
+
+async function checkRequiredRpcApi(output, sdk) {
+  const { ios, backend } = sdk.requiredApi ?? {};
+  if (ios) {
+    const swift = await readFile(join(output, 'swift', 'Sources', sdk.module, 'RpcClient.swift'), 'utf8');
+    for (const method of ios) {
+      if (!swift.includes(`public func \`${method}\`(`)) {
+        throw new Error(`Required iOS RPC method ${method} is missing from the generated Swift SDK`);
+      }
+    }
+  }
+  if (backend) {
+    const spring = await readFile(join(output, 'spring', 'src/main/kotlin/dev/rustinside/rpc/Application.kt'), 'utf8');
+    for (const method of backend) {
+      if (!spring.includes(`@PostMapping(${JSON.stringify(`/rpc/${method}`)},`)) {
+        throw new Error(`Required backend RPC method ${method} is missing its generated Spring route`);
+      }
+    }
+  }
+}
 
 export async function generateRpc(manifestFile, outputDirectory) {
   const output = resolve(outputDirectory);
@@ -13,6 +33,7 @@ export async function generateRpc(manifestFile, outputDirectory) {
   const sdk = await generate(manifestFile, join(output, 'jvm'), { rpc: true });
   await writeSpringRpcServer(join(output, 'spring'), sdk);
   await writeSwiftRpcPackage(join(output, 'swift'), sdk);
+  await checkRequiredRpcApi(output, sdk);
   return sdk;
 }
 

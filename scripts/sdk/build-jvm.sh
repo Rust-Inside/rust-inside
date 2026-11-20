@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-templates="$(cd "$(dirname "$0")/package-templates/jvm" && pwd)"
+scripts="$(cd "$(dirname "$0")" && pwd)"
+templates="$scripts/package-templates/jvm"
 generated="$(cd "${1:?Pass the generated SDK workspace}" && pwd)"
 if [[ -d "$generated/platforms/backend" ]]; then generated="$generated/platforms/backend"; fi
 version="${2:?Pass the SDK version}"
@@ -50,9 +51,12 @@ cargo build --manifest-path "$generated/mobile/Cargo.toml" --locked --target "$h
   "$target_dir/$host/debug/rust-inside-bindgen" generate --metadata-no-deps --crate "$library" \
     "$resources/${entries[0]}" --language kotlin --no-format --out-dir "$stage/src/main/kotlin"
 )
+tasks=(jar generateDescriptorFileForSdkPublication)
+contract_task="$(node "$scripts/tests/write-kotlin-api-check.mjs" "$generated/sdk.json" backend "$stage")"
+if [[ -n "$contract_task" ]]; then tasks+=("$contract_task"); fi
 gradle --no-daemon -p "$stage" -PsdkGroup="$group" -PsdkArtifact="$artifact" -PsdkVersion="$version" \
   -PsdkCoroutinesVersion="$(node -p 'require(process.argv[1]).kotlinCoroutinesVersion || ""' "$generated/sdk.json")" \
-  jar generateDescriptorFileForSdkPublication
+  "${tasks[@]}"
 archive="$stage/build/libs/$artifact-$version.jar"
 unzip -tqq "$archive" "${group//./\/}/*.class" "${entries[@]}"
 cp "$archive" "$output/"

@@ -8,7 +8,7 @@
   "allOf": [{
     "if": { "required": ["uniffi"] },
     "then": {
-      "not": { "anyOf": [{ "required": ["name"] }, { "required": ["crate"] }] },
+      "not": { "anyOf": [{ "required": ["name"] }, { "required": ["crate"] }, { "required": ["requiredApi"] }] },
       "properties": { "repositories": { "properties": {
         "android": { "type": "null" }, "flutter": { "type": "null" },
         "web": { "type": "null" }, "backend": { "type": "null" }
@@ -43,6 +43,17 @@
         "android": { "$ref": "#/definitions/repository" },
         "flutter": { "$ref": "#/definitions/repository" },
         "web": { "$ref": "#/definitions/repository" }
+      }
+    },
+    "requiredApi": {
+      "type": "object",
+      "description": "플랫폼별로 반드시 생성할 SDK 공개 함수 또는 메서드 이름입니다. 예: report, AccountClient.getMe.",
+      "propertyNames": { "enum": ["backend", "ios", "android", "flutter", "web"] },
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "uniqueItems": true,
+        "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z_0-9]*(?:\\.[A-Za-z_][A-Za-z_0-9]*)?$" }
       }
     },
     "api": {
