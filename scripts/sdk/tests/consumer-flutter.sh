@@ -57,7 +57,26 @@ for (const [index, name] of (sdk.requiredApi?.flutter ?? []).entries()) {
   console.log(`Object checkRequiredApi${index}(${signature}) => ${reference};`);
 }
 NODE
-flutter build apk --debug
+
+# Give Maven Central time to recover after Flutter's own immediate retry.
+build_log="$stage/flutter-build.log"
+for retry_delay in 20 40 0; do
+  if flutter build apk --debug 2>&1 | tee "$build_log"; then
+    break
+  else
+    build_status=("${PIPESTATUS[@]}")
+  fi
+  if (( build_status[1] != 0 )); then
+    exit "${build_status[1]}"
+  fi
+  if (( retry_delay == 0 )) || ! grep -Eq \
+    'https?://(repo\.maven\.apache\.org|repo1\.maven\.org)/maven2/[^[:space:]]+[[:space:]].*Received status code 429([[:space:]]|$)' "$build_log"; then
+    exit "${build_status[0]}"
+  fi
+  printf 'Maven Central rate limited the Flutter APK build. Retrying in %s seconds.\n' "$retry_delay" >&2
+  sleep "$retry_delay"
+done
+
 apk=build/app/outputs/flutter-apk/app-debug.apk
 for abi in armeabi-v7a arm64-v8a x86_64; do
   unzip -tqq "$apk" "lib/$abi/lib$name.so"

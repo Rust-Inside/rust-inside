@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -87,4 +87,71 @@ assert 'error' in call('Session.profile', first)
   assert.equal(execFileSync('tar', ['xOzf', join(dist, sdk.name + '-flutter-1.2.3.tar.gz'), 'LICENSE'], { encoding: 'utf8' }), notice);
   assert.equal(tar.trim().split('\n').length, 10);
   assert.match(tar, /native\/ios-sim-arm64\/libflutter_fixture_flutter\.dylib/);
+});
+
+test('the Flutter APK consumer retries only Maven Central rate limits', async t => {
+  const consumer = fileURLToPath(new URL('./tests/consumer-flutter.sh', import.meta.url));
+  const rateLimit = host => "Could not GET 'https://" + host + "/maven2/example/plugin.pom'. Received status code 429 from server: Too Many Requests";
+  const mavenError = rateLimit('repo.maven.apache.org');
+  const setup = ['flutter pub', 'flutter analyze', 'flutter create', 'flutter pub'];
+  const apkChecks = ['armeabi-v7a', 'arm64-v8a', 'x86_64'].map(abi => 'unzip lib/' + abi + '/libflutter_fixture_flutter.so');
+  const cases = [
+    ['retries the APK build without running setup again', [mavenError], 0,
+      ['flutter build', 'sleep 20', 'flutter build', ...apkChecks]],
+    ['stops after two retries and preserves the build status', Array(3).fill(rateLimit('repo1.maven.org')), 37,
+      ['flutter build', 'sleep 20', 'flutter build', 'sleep 40', 'flutter build']],
+    ['does not retry a rate limit from another repository', [rateLimit('example.invalid')], 37, ['flutter build']],
+    ['does not retry a permanent error after a rate limit', [mavenError, 'Dart compilation failed'], 37,
+      ['flutter build', 'sleep 20', 'flutter build']],
+  ];
+
+  for (const [name, errors, status, expected] of cases) {
+    await t.test(name, async t => {
+      const root = await mkdtemp(join(tmpdir(), 'rust-inside-flutter-retry-'));
+      t.after(() => rm(root, { recursive: true, force: true }));
+      const bin = join(root, 'bin');
+      const generated = join(root, 'generated');
+      const packageDir = join(root, 'package');
+      const trace = join(root, 'calls');
+      const errorsFile = join(root, 'errors');
+      await Promise.all([bin, generated, packageDir].map(directory => mkdir(directory)));
+      await writeFile(join(generated, 'sdk.json'), JSON.stringify({ name: 'flutter-fixture', exports: [{ jsName: 'example' }] }));
+      await writeFile(join(packageDir, 'pubspec.yaml'), 'name: flutter_fixture_flutter\n');
+      await writeFile(errorsFile, errors.join('\n') + '\n');
+      const flutter = [
+        '#!/usr/bin/env bash',
+        'set -eu',
+        'printf "flutter %s\\n" "$1" >> "$TRACE"',
+        'case "$1" in',
+        '  create)',
+        '    for destination in "$@"; do :; done',
+        '    mkdir -p "$destination/lib"',
+        '    ;;',
+        '  build)',
+        '    [[ "$*" == "build apk --debug" ]]',
+        "    attempts=$(grep -c '^flutter build$' \"$TRACE\")",
+        '    error=$(sed -n "$attempts"p "$ERRORS")',
+        '    if [[ -n "$error" ]]; then',
+        '      printf "%s\\n" "$error" >&2',
+        '      exit 37',
+        '    fi',
+        '    ;;',
+        'esac',
+        '',
+      ].join('\n');
+      await writeFile(join(bin, 'flutter'), flutter, { mode: 0o755 });
+      await writeFile(join(bin, 'sleep'), '#!/usr/bin/env bash\nprintf "sleep %s\\n" "$1" >> "$TRACE"\n', { mode: 0o755 });
+      await writeFile(join(bin, 'unzip'), '#!/usr/bin/env bash\nprintf "unzip %s\\n" "$3" >> "$TRACE"\n', { mode: 0o755 });
+
+      const result = spawnSync('bash', [consumer, generated, packageDir, '1.2.3'], {
+        encoding: 'utf8',
+        timeout: 10000,
+        env: { ...process.env, PATH: bin + ':' + process.env.PATH, TRACE: trace, ERRORS: errorsFile },
+      });
+      assert.ifError(result.error);
+      assert.equal(result.status, status, result.stderr + result.stdout);
+      assert.deepEqual((await readFile(trace, 'utf8')).trim().split('\n'), [...setup, ...expected]);
+      for (const error of errors) assert.ok(result.stdout.includes(error), 'Flutter build error was not shown');
+    });
+  }
 });
