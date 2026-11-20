@@ -7,6 +7,9 @@ on:
         description: SDK version in X.Y.Z form
         type: string
         required: true
+      source_sha:
+        description: Core commit used to build the packages (defaults to the caller commit)
+        type: string
       backend:
         description: Backend selection (node, jvm or direct Rust crate)
         type: string
@@ -84,7 +87,7 @@ jobs:
       - name: Distribute one core version to the destination repositories
         env:
           RUST_INSIDE_VERSION: ${{ inputs.version }}
-          RUST_INSIDE_SOURCE: ${{ github.repository }}@${{ github.sha }}
+          RUST_INSIDE_SOURCE: ${{ github.repository }}@${{ inputs.source_sha || github.sha }}
           RUST_INSIDE_DRY_RUN: ${{ inputs.dry_run }}
           RUST_INSIDE_BACKEND: ${{ inputs.backend }}
           BACKEND_REPOSITORY: ${{ inputs.backend_repository }}

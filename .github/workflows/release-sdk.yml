@@ -10,6 +10,9 @@ on:
       version:
         description: SDK version (defaults to the caller's vX.Y.Z tag)
         type: string
+      source_tag:
+        description: Existing core vX.Y.Z tag to build when retrying a release
+        type: string
       dry_run:
         description: Build the selected SDKs and show their destinations without publishing
         type: boolean
@@ -28,6 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.release.outputs.version }}
+      source_sha: ${{ steps.source.outputs.sha }}
       repositories: ${{ steps.generate.outputs.repositories || steps.plan.outputs.repositories }}
       backend: ${{ steps.generate.outputs.backend || steps.plan.outputs.backend }}
       matrix: ${{ steps.generate.outputs.matrix || steps.plan.outputs.matrix }}
@@ -35,12 +39,36 @@ jobs:
       build_jvm: ${{ steps.generate.outputs.build_jvm || steps.plan.outputs.build_jvm }}
       build_flutter: ${{ steps.generate.outputs.build_flutter || steps.plan.outputs.build_flutter }}
     steps:
+      - name: Select the existing core tag for a retry
+        id: retry
+        if: inputs.source_tag != ''
+        env:
+          TAG: ${{ inputs.source_tag }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          if ! [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "source_tag must be a vX.Y.Z tag." >&2
+            exit 1
+          fi
+          if [[ -n "$VERSION" && "$VERSION" != "${TAG#v}" ]]; then
+            echo "version must match source_tag." >&2
+            exit 1
+          fi
+          echo "ref=refs/tags/$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
       - name: Check out the caller's Rust project
         uses: actions/checkout@v6
         with:
+          ref: ${{ steps.retry.outputs.ref || github.sha }}
           path: source
           submodules: recursive
           persist-credentials: false
+      - name: Record the core commit for all builds
+        id: source
+        working-directory: source
+        run: |
+          sha=$(git rev-parse --verify 'HEAD^{commit}')
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - name: Check out the matching Rust Inside tools
         uses: actions/checkout@v6
         with:
@@ -62,7 +90,7 @@ jobs:
         id: release
         if: steps.plan.outputs.has_packages == 'true'
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ steps.retry.outputs.version || inputs.version }}
         run: |
           if [[ -z "$VERSION" && "$GITHUB_REF_TYPE" == tag && "$GITHUB_REF_NAME" == v* ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
@@ -88,10 +116,12 @@ jobs:
         env:
           MANIFEST: ${{ inputs.manifest }}
           VERSION: ${{ steps.release.outputs.version }}
+          SOURCE_REF: ${{ steps.retry.outputs.ref || github.ref }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
           RUST_INSIDE_TOOLS_TOKEN: *tools-token
         run: |
           node ../rust-inside/scripts/sdk/generate.mjs "$MANIFEST" ../generated
-          node ../rust-inside/scripts/sdk/release-info.mjs ../generated/sdk.json
+          GITHUB_REF="$SOURCE_REF" GITHUB_SHA="$SOURCE_SHA" node ../rust-inside/scripts/sdk/release-info.mjs ../generated/sdk.json
       - if: steps.generate.outputs.has_packages == 'true'
         uses: actions/upload-artifact@v4
         with:
@@ -115,6 +145,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ needs.generate.outputs.source_sha }}
           path: source
           submodules: recursive
           persist-credentials: false
@@ -168,7 +199,7 @@ jobs:
       - if: matrix.platform == 'android'
         env: *cargo-auth
         run: |
-          sdkmanager 'ndk;28.1.13356709' 'platforms;android-36' 'build-tools;35.0.0'
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;28.1.13356709' 'platforms;android-36' 'build-tools;35.0.0'
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.1.13356709"
           bash ../rust-inside/scripts/sdk/build-android.sh ../generated "$VERSION" "$RUNNER_TEMP/packages/android"
       - if: matrix.platform == 'flutter-ios'
@@ -177,7 +208,7 @@ jobs:
       - if: matrix.platform == 'flutter-android'
         env: *cargo-auth
         run: |
-          sdkmanager 'ndk;28.1.13356709'
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;28.1.13356709'
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.1.13356709"
           bash ../rust-inside/scripts/sdk/flutter-build.sh ../generated/platforms/flutter android "$RUNNER_TEMP/flutter-natives"
       - if: startsWith(matrix.platform, 'flutter-')
@@ -216,6 +247,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ needs.generate.outputs.source_sha }}
           path: source
           submodules: recursive
           persist-credentials: false
@@ -313,6 +345,7 @@ jobs:
     uses: ./.github/workflows/distribute.yml
     with:
       version: ${{ needs.generate.outputs.version }}
+      source_sha: ${{ needs.generate.outputs.source_sha }}
       backend: ${{ needs.generate.outputs.backend }}
       backend_repository: ${{ fromJSON(needs.generate.outputs.repositories).backend || '' }}
       ios_repository: ${{ fromJSON(needs.generate.outputs.repositories).ios || '' }}
