@@ -38,7 +38,7 @@ To try the build, fork `sample-rust-core` and enable GitHub Actions in the fork.
 
 ## Call a Rust server function from Swift
 
-The calculator example defines one server function in Rust. The RPC generator reads its signature and builds the Swift client API and Spring route from it. [Rust source](../examples/swift-spring-rpc/src/api.rs) · [Manifest](../examples/swift-spring-rpc/rust-inside.json)
+Mark a Rust function with `#[rust_inside::server]` to generate a Swift client method and a Spring route.
 
 ```rust
 #[rust_inside::server]
@@ -47,41 +47,9 @@ pub fn add(a: i32, b: i32) -> i64 {
 }
 ```
 
-In Swift, create the client once with the server URL. The generated method takes two `Int32` arguments and returns an `Int64`.
-
 ```swift
-import CalculatorSDK
-import Foundation
-
-let calculator = RpcClient(baseURL: serverURL)
-let result = try await calculator.add(2, 3) // 5
+let result = try await RpcClient(baseURL: serverURL).add(2, 3) // 5
 ```
-
-1. The Swift client sends `POST /rpc/add` with `{"a":2,"b":3}`.
-2. The generated Spring route reads the arguments and invokes Rust's `add` through the JVM SDK.
-3. Spring returns the JSON number `5`, which the Swift client decodes and returns to the caller.
-
-### Run the calculator example
-
-Use Node.js 22+, stable Rust, Python 3.11+, JDK 17+, Gradle 8.11.1, and Swift 6+. Run from the Rust Inside repository root.
-
-```sh
-bash examples/swift-spring-rpc/verify.sh
-```
-
-The script generates the client and server sources, builds the JVM JAR, and starts Spring on a temporary local port. It runs the Swift client and prints `5`. To keep the generated files, pass an empty output directory.
-
-```sh
-bash examples/swift-spring-rpc/verify.sh /tmp/rust-inside-rpc-example
-```
-
-In the output directory, `swift/` contains the Swift package, `spring/` contains the Spring project and routes, and `packages/` contains the JVM JAR. To generate the sources without running the example, use the following command.
-
-```sh
-node scripts/sdk/generate-rpc.mjs examples/swift-spring-rpc/rust-inside.json /tmp/rust-inside-rpc-sources
-```
-
-This local example uses the `api` module and the `jvm` backend. The RPC generator supports server-scoped synchronous functions with `i32`, `i64`, `String`, unit enums, and records with scalar or enum fields. [Verification script](../examples/swift-spring-rpc/verify.sh)
 
 ### Submit a report as a signed-in user
 
@@ -96,7 +64,7 @@ print(receipt.reportId)
 2. The generated controller creates `RpcContext` from the authenticated principal and a server-generated request ID, then calls Rust through the JVM SDK.
 3. Rust builds the typed receipt. A Spring listener saves the report in H2 before the controller returns the receipt to Swift. [Security and storage](../examples/swift-spring-report/spring/src/main/kotlin/dev/rustinside/rpc/ReportConfiguration.kt)
 
-Run from the repository root with the calculator example's tools and `curl`. The script starts Spring on loopback, generates a password for the demo user `martin`, and checks that the returned ID matches the single saved row. It also checks HTTP 401 for an unsigned-in request and HTTP 400 for a request with an extra reporter ID.
+From the Rust Inside repository root, run the example with Node.js 22+, stable Rust, Python 3.11+, JDK 17+, Gradle 8.11.1, Swift 6+, and `curl`. The script starts Spring on loopback, generates a password for the demo user `martin`, and checks that the returned ID matches the single saved row. It also checks HTTP 401 for an unsigned-in request and HTTP 400 for a request with an extra reporter ID.
 
 ```sh
 bash examples/swift-spring-report/verify.sh /tmp/rust-inside-report-example

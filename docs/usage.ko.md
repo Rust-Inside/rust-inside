@@ -36,7 +36,7 @@ func displayName(apiOrigin: String, accessToken: String) async throws -> String 
 
 ## Swift에서 Rust 서버 함수 호출하기
 
-계산기 예제는 서버에서 실행할 함수를 Rust에 한 번 정의합니다. RPC 생성기가 함수 시그니처를 읽어 Swift 호출 메서드와 Spring 라우트를 만듭니다. [Rust 소스](../examples/swift-spring-rpc/src/api.rs) · [설정 파일](../examples/swift-spring-rpc/rust-inside.json)
+Rust 함수에 `#[rust_inside::server]`를 붙이면 RPC 생성기가 Swift 호출 메서드와 Spring 라우트를 만듭니다.
 
 ```rust
 #[rust_inside::server]
@@ -45,41 +45,9 @@ pub fn add(a: i32, b: i32) -> i64 {
 }
 ```
 
-Swift에서는 서버 주소로 클라이언트를 한 번 생성합니다. 생성된 메서드는 `Int32` 두 개를 받아 `Int64`를 반환합니다.
-
 ```swift
-import CalculatorSDK
-import Foundation
-
-let calculator = RpcClient(baseURL: serverURL)
-let result = try await calculator.add(2, 3) // 5
+let result = try await RpcClient(baseURL: serverURL).add(2, 3) // 5
 ```
-
-1. Swift 클라이언트가 `{"a":2,"b":3}`을 담아 `POST /rpc/add`를 보냅니다.
-2. 생성된 Spring 라우트가 인자를 읽고 JVM SDK를 통해 Rust의 `add`를 호출합니다.
-3. Spring이 JSON 숫자 `5`를 반환하면 Swift 클라이언트가 값을 읽어 호출자에게 돌려줍니다.
-
-### 계산기 예제 실행하기
-
-Node.js 22 이상, 안정 버전 Rust, Python 3.11 이상, JDK 17 이상, Gradle 8.11.1, Swift 6 이상이 필요합니다. Rust Inside 저장소 루트에서 실행하세요.
-
-```sh
-bash examples/swift-spring-rpc/verify.sh
-```
-
-스크립트가 클라이언트와 서버 소스를 생성하고 JVM JAR을 빌드한 뒤, 로컬 임시 포트에 Spring을 띄웁니다. Swift 클라이언트가 응답을 받으면 `5`를 출력합니다. 생성된 파일을 보관하려면 빈 출력 디렉터리를 넘기세요.
-
-```sh
-bash examples/swift-spring-rpc/verify.sh /tmp/rust-inside-rpc-example
-```
-
-출력 디렉터리의 `swift/`에는 Swift 패키지, `spring/`에는 라우트를 포함한 Spring 프로젝트, `packages/`에는 JVM JAR이 들어 있습니다. 소스만 생성하려면 아래 명령을 실행하세요.
-
-```sh
-node scripts/sdk/generate-rpc.mjs examples/swift-spring-rpc/rust-inside.json /tmp/rust-inside-rpc-sources
-```
-
-이 로컬 예제는 `api` 모듈과 `jvm` 백엔드를 사용합니다. RPC 생성기는 서버용 동기 함수의 인자와 반환값에 `i32`, `i64`, `String`, 값 없는 열거형, 스칼라나 열거형 필드로 구성된 레코드를 지원합니다. [검증 스크립트](../examples/swift-spring-rpc/verify.sh)
 
 ### 로그인한 사용자로 신고하기
 
@@ -94,7 +62,7 @@ print(receipt.reportId)
 2. 생성된 컨트롤러가 로그인한 사용자와 서버에서 생성한 요청 ID로 `RpcContext`를 만들고 JVM SDK를 통해 Rust를 호출합니다.
 3. Rust가 신고 응답을 만들면 Spring 리스너가 H2에 신고를 저장합니다. 컨트롤러는 저장이 끝난 뒤 Swift에 응답을 반환합니다. [인증과 저장 코드](../examples/swift-spring-report/spring/src/main/kotlin/dev/rustinside/rpc/ReportConfiguration.kt)
 
-계산기 예제의 도구와 `curl`을 준비하고 저장소 루트에서 실행하세요. 스크립트는 로컬에서 Spring을 띄우고 테스트 계정 `martin`의 비밀번호를 생성합니다. Swift가 받은 ID가 DB에 저장된 한 건과 일치하는지 확인하고, 비인증 요청의 401과 신고자 ID를 넣은 요청의 400도 확인합니다.
+Node.js 22 이상, 안정 버전 Rust, Python 3.11 이상, JDK 17 이상, Gradle 8.11.1, Swift 6 이상, `curl`을 준비한 뒤 Rust Inside 저장소 루트에서 실행하세요. 스크립트는 로컬에서 Spring을 띄우고 테스트 계정 `martin`의 비밀번호를 생성합니다. Swift가 받은 ID가 DB에 저장된 한 건과 일치하는지 확인하고, 비인증 요청의 401과 신고자 ID를 넣은 요청의 400도 확인합니다.
 
 ```sh
 bash examples/swift-spring-report/verify.sh /tmp/rust-inside-report-example

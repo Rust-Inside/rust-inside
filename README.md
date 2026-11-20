@@ -31,8 +31,6 @@ Run the sample workflow manually. In your own repository, the release template p
 
 Call the sample from Swift or set up your own Rust API and release pipeline. [English guide](docs/usage.md) · [한국어 가이드](docs/usage.ko.md)
 
-[Swift and Spring RPC example](docs/usage.md#call-a-rust-server-function-from-swift) · [Authenticated report example](docs/usage.md#submit-a-report-as-a-signed-in-user)
-
 ## License
 
 [MIT](LICENSE)
