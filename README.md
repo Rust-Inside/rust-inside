@@ -12,7 +12,7 @@ Rust Inside builds and publishes versioned SDKs from a Rust library.
 
 ## Install a platform SDK
 
-Install `v0.1.0` to try `getMe()`. The SDK runs the Rust client, which sends `GET /v1/me` to your account server.
+Install `v0.2.0` to try `getMe()`. The SDK runs the Rust client, which sends `GET /v1/me` to your account server.
 
 | Platform | Sample package | Install and use |
 | --- | --- | --- |

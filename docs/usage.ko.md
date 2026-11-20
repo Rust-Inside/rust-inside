@@ -6,7 +6,7 @@
 
 ## 플랫폼별 설치와 사용법
 
-샘플 `v0.1.0`을 설치할 플랫폼을 고르세요.
+샘플 `v0.2.0`을 설치할 플랫폼을 고르세요.
 
 | 플랫폼 | 앱이나 서버에 추가할 패키지 | 지원 환경 | 설치와 호출 예제 |
 | --- | --- | --- | --- |
@@ -18,7 +18,7 @@
 
 ### Swift에서 프로필 조회하기
 
-Xcode에서 **File → Add Package Dependencies**를 열고 `https://github.com/Rust-Inside/sample-ios-sdk.git`를 입력하세요. **Exact Version** `0.1.0`의 `SampleRustCoreSDK`를 앱 타깃에 추가하면 SwiftPM이 빌드된 XCFramework를 받습니다. [iOS v0.1.0 릴리스](https://github.com/Rust-Inside/sample-ios-sdk/releases/tag/v0.1.0)
+Xcode에서 **File → Add Package Dependencies**를 열고 `https://github.com/Rust-Inside/sample-ios-sdk.git`를 입력하세요. **Exact Version** `0.2.0`의 `SampleRustCoreSDK`를 앱 타깃에 추가하면 SwiftPM이 빌드된 XCFramework를 받습니다. [iOS v0.2.0 릴리스](https://github.com/Rust-Inside/sample-ios-sdk/releases/tag/v0.2.0)
 
 ```swift
 import SampleRustCoreSDK
@@ -30,9 +30,9 @@ func displayName(apiOrigin: String, accessToken: String) async throws -> String 
 }
 ```
 
-계정 서버 주소와 사용자 액세스 토큰을 넘기세요. Swift의 `getMe()`는 앱에 포함된 Rust의 `AccountClient::get_me`를 실행합니다. Rust 클라이언트가 인증 헤더와 함께 `GET /v1/me`를 보내면, 서버는 요청을 인증하고 `id`, `handle`, `displayName`이 담긴 JSON을 반환합니다. 클라이언트는 이 JSON을 프로필 객체로 읽습니다. [샘플 코어](https://github.com/Rust-Inside/sample-rust-core/blob/main/README.ko.md) · [v0.1.0 Rust 구현](https://github.com/Rust-Inside/sample-rust-core/blob/v0.1.0/src/api.rs) · [Spring 컨트롤러 예제](https://github.com/Rust-Inside/sample-server-sdk/blob/main/README.ko.md#로그인한-사용자의-프로필-응답)
+계정 서버 주소와 사용자 액세스 토큰을 넘기세요. Swift의 `getMe()`는 앱에 포함된 Rust의 `AccountClient::get_me`를 실행합니다. Rust 클라이언트가 인증 헤더와 함께 `GET /v1/me`를 보내면, 서버는 요청을 인증하고 `id`, `handle`, `displayName`이 담긴 JSON을 반환합니다. 클라이언트는 이 JSON을 프로필 객체로 읽습니다. [샘플 코어](https://github.com/Rust-Inside/sample-rust-core/blob/main/README.ko.md) · [v0.2.0 Rust 구현](https://github.com/Rust-Inside/sample-rust-core/blob/v0.2.0/src/api.rs) · [Spring 컨트롤러 예제](https://github.com/Rust-Inside/sample-server-sdk/blob/main/README.ko.md#로그인한-사용자의-프로필-응답)
 
-`sample-rust-core`를 포크해 GitHub Actions를 켜세요. **Actions → Release sample SDKs → Run workflow**에서 `release_tag`를 비워 두면 빌드만 시험합니다. [샘플 워크플로](https://github.com/Rust-Inside/sample-rust-core/blob/main/.github/workflows/release.yml)
+`sample-rust-core`를 포크해 GitHub Actions를 켜세요. **Actions → Release sample SDKs → Run workflow**에서 `dry_run`을 켜 둡니다. `release_tag`를 비우면 선택한 브랜치를 빌드하고, `v0.2.0`을 입력하면 해당 릴리스를 빌드합니다. [샘플 워크플로](https://github.com/Rust-Inside/sample-rust-core/blob/main/.github/workflows/release.yml)
 
 ## Swift에서 Rust 서버 함수 호출하기
 
@@ -282,7 +282,7 @@ CI는 Node 22로 패키지를 검사합니다. Node·npm 최소 버전은 지정
 
 ```toml
 [dependencies]
-sample-rust-core = { git = "https://github.com/Rust-Inside/sample-rust-core.git", tag = "v0.1.0" }
+sample-rust-core = { git = "https://github.com/Rust-Inside/sample-rust-core.git", tag = "v0.2.0" }
 ```
 
 ```rust

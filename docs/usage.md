@@ -8,7 +8,7 @@ Start with the published SDK, then use the release workflow below to package you
 
 ## Install a platform SDK
 
-The sample packages are published as `v0.1.0`.
+The sample packages are published as `v0.2.0`.
 
 | Platform | Package to install | Supported environment | Installation and usage |
 | --- | --- | --- | --- |
@@ -20,7 +20,7 @@ The sample packages are published as `v0.1.0`.
 
 ### Fetch a profile from Swift
 
-In Xcode, open **File → Add Package Dependencies** and enter `https://github.com/Rust-Inside/sample-ios-sdk.git`. Set **Exact Version** to `0.1.0` and add `SampleRustCoreSDK` to your app target. SwiftPM downloads the prebuilt XCFramework. [iOS release v0.1.0](https://github.com/Rust-Inside/sample-ios-sdk/releases/tag/v0.1.0)
+In Xcode, open **File → Add Package Dependencies** and enter `https://github.com/Rust-Inside/sample-ios-sdk.git`. Set **Exact Version** to `0.2.0` and add `SampleRustCoreSDK` to your app target. SwiftPM downloads the prebuilt XCFramework. [iOS release v0.2.0](https://github.com/Rust-Inside/sample-ios-sdk/releases/tag/v0.2.0)
 
 ```swift
 import SampleRustCoreSDK
@@ -32,9 +32,9 @@ func displayName(apiOrigin: String, accessToken: String) async throws -> String 
 }
 ```
 
-Pass your account server's origin and the user's access token. The Swift binding runs Rust's `AccountClient::get_me` inside the app. Rust sends `GET /v1/me` with the authorization header and decodes the response. Your server handles the route, authenticates the request, and returns `id`, `handle`, and `displayName` as JSON. [Sample core](https://github.com/Rust-Inside/sample-rust-core) · [Rust implementation for v0.1.0](https://github.com/Rust-Inside/sample-rust-core/blob/v0.1.0/src/api.rs) · [Spring controller example](https://github.com/Rust-Inside/sample-server-sdk#return-the-signed-in-users-profile)
+Pass your account server's origin and the user's access token. The Swift binding runs Rust's `AccountClient::get_me` inside the app. Rust sends `GET /v1/me` with the authorization header and decodes the response. Your server handles the route, authenticates the request, and returns `id`, `handle`, and `displayName` as JSON. [Sample core](https://github.com/Rust-Inside/sample-rust-core) · [Rust implementation for v0.2.0](https://github.com/Rust-Inside/sample-rust-core/blob/v0.2.0/src/api.rs) · [Spring controller example](https://github.com/Rust-Inside/sample-server-sdk#return-the-signed-in-users-profile)
 
-To try the build, fork `sample-rust-core` and enable GitHub Actions in the fork. In **Actions → Release sample SDKs → Run workflow**, leave `release_tag` blank for a dry run. [Sample workflow](https://github.com/Rust-Inside/sample-rust-core/blob/main/.github/workflows/release.yml)
+To try the build, fork `sample-rust-core` and enable GitHub Actions in the fork. In **Actions → Release sample SDKs → Run workflow**, keep `dry_run` enabled. Leave `release_tag` blank to build the selected branch, or enter `v0.2.0` to build that release. [Sample workflow](https://github.com/Rust-Inside/sample-rust-core/blob/main/.github/workflows/release.yml)
 
 ## Call a Rust server function from Swift
 
@@ -299,7 +299,7 @@ For a Rust server, pin the library's Git tag in `Cargo.toml`. Cargo builds from 
 
 ```toml
 [dependencies]
-sample-rust-core = { git = "https://github.com/Rust-Inside/sample-rust-core.git", tag = "v0.1.0" }
+sample-rust-core = { git = "https://github.com/Rust-Inside/sample-rust-core.git", tag = "v0.2.0" }
 ```
 
 ```rust
