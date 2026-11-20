@@ -1,6 +1,6 @@
 # Rust Inside
 
-[English](README.md) | [한국어](README.ko.md)
+[한국어](README.ko.md)
 
 Rust Inside is cross-platform SDK build and release tooling for Rust libraries.
 

@@ -1,6 +1,6 @@
 # Rust Inside
 
-[English](README.md) | [한국어](README.ko.md)
+[English](README.md)
 
 Rust Inside는 Rust 라이브러리용 멀티플랫폼 SDK 생성·배포 도구입니다.
 
