@@ -1,0 +1,53 @@
+name: Release iOS SDK
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing core version tag (vX.Y.Z)
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-ios-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    outputs:
+      repository: ${{ steps.sdk.outputs.repository }}
+      revision: ${{ steps.sdk.outputs.revision }}
+    steps:
+      - &tools
+        uses: actions/checkout@v6
+        with:
+          repository: Rust-Inside/rust-inside
+          ref: main # Pin to a Rust Inside commit when installing.
+          # Optional read key when using a private copy of Rust Inside.
+          ssh-key: ${{ secrets.RUST_INSIDE_TOOLS_SSH_KEY }}
+          path: rust-inside
+          fetch-depth: 0
+          persist-credentials: false
+      - id: sdk
+        uses: ./rust-inside/actions/build-ios
+        with:
+          tag: ${{ inputs.tag || github.ref_name }}
+
+  publish:
+    needs: build
+    if: needs.build.outputs.repository != ''
+    runs-on: ubuntu-latest
+    steps:
+      - *tools
+      - uses: ./rust-inside/actions/publish-ios
+        with:
+          repository: ${{ needs.build.outputs.repository }}
+          revision: ${{ needs.build.outputs.revision }}
+          tag: ${{ inputs.tag || github.ref_name }}
+          ssh-key: ${{ secrets.RUST_INSIDE_IOS_PUBLISH_KEY }}

@@ -1,0 +1,61 @@
+name: Build an iOS Swift package
+description: Test the tagged Rust workspace and build its selected public API for iOS
+inputs:
+  tag:
+    description: Core version tag (vX.Y.Z)
+    required: true
+  manifest:
+    description: Release configuration relative to the source repository
+    default: rust-inside.json
+outputs:
+  repository:
+    description: Configured iOS package repository, or empty to skip publishing
+    value: ${{ steps.build.outputs.repository }}
+  revision:
+    description: Exact core commit used to build the package
+    value: ${{ steps.source.outputs.commit }}
+runs:
+  using: composite
+  steps:
+    - name: Validate version tag
+      shell: bash
+      env:
+        SDK_TAG: ${{ inputs.tag }}
+      run: '[[ "$SDK_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]'
+    - uses: actions/checkout@v6
+      id: source
+      with:
+        ref: ${{ github.event_name == 'push' && github.sha || format('refs/tags/{0}', inputs.tag) }}
+        path: source
+        submodules: recursive
+        persist-credentials: false
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '22'
+    - uses: actions/setup-python@v6
+      with:
+        python-version: '3.13'
+    - name: Test and package the iOS API
+      id: build
+      shell: bash
+      working-directory: source
+      env:
+        MANIFEST: ${{ inputs.manifest }}
+      run: |
+        tools="$(cd "$GITHUB_ACTION_PATH/../.." && pwd)"
+        # Cargo can resolve a pinned annotation dependency from the checked-out
+        # tools history without passing the private repository key to the build.
+        index=${GIT_CONFIG_COUNT:-0}
+        env "GIT_CONFIG_KEY_$index=url.file://$tools.insteadOf" \
+          "GIT_CONFIG_VALUE_$index=https://github.com/Rust-Inside/rust-inside.git" \
+          "GIT_CONFIG_KEY_$((index+1))=url.file://$tools.insteadOf" \
+          "GIT_CONFIG_VALUE_$((index+1))=https://github.com/Rust-Inside/rust-inside" \
+          "GIT_CONFIG_COUNT=$((index+2))" CARGO_NET_GIT_FETCH_WITH_CLI=true \
+          node "$tools/scripts/sdk/build-ios-package.mjs" "$MANIFEST" "$RUNNER_TEMP/ios-package"
+    - uses: actions/upload-artifact@v4
+      if: steps.build.outputs.repository != ''
+      with:
+        name: rust-inside-swift-package
+        path: ${{ runner.temp }}/ios-package/
+        if-no-files-found: error
+        overwrite: true

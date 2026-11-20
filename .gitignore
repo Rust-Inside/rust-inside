@@ -1,0 +1,10 @@
+target/
+.gradle/
+.kotlin/
+build/
+.build/
+node_modules/
+pkg/
+xcuserdata/
+project.xcworkspace/
+.DS_Store

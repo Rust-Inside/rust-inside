@@ -1,0 +1,76 @@
+name: Publish iOS SDK release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing SDK tag (vX.Y.Z)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-ios-sdk-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      SDK_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - name: Check SDK tag
+        run: '[[ "$SDK_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]'
+      - uses: actions/checkout@v6
+        with:
+          ref: refs/tags/${{ env.SDK_TAG }}
+          persist-credentials: false
+      - name: Attach the XCFramework to the SDK release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source="$(sed -n 's/^source=//p' SDK-PROVENANCE)"
+          [[ "$source" =~ ^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$ ]]
+          revision="$(sed -n 's/^commit=//p' SDK-PROVENANCE)"
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+          printf 'source=%s\ntag=%s\ncommit=%s\n' "$source" "$SDK_TAG" "$revision" | cmp - SDK-PROVENANCE
+          shopt -s nullglob
+          frameworks=(*.xcframework)
+          [[ ${#frameworks[@]} == 1 && "${frameworks[0]}" =~ ^[A-Za-z_][A-Za-z0-9_]*\.xcframework$ ]]
+          framework="${frameworks[0]}"
+          filename="${framework%.xcframework}-${SDK_TAG#v}.xcframework.zip"
+          asset="$RUNNER_TEMP/$filename"
+          TZ=UTC git archive --format=zip -o "$asset" HEAD "$framework"
+          digest="sha256:$(sha256sum "$asset" | cut -d' ' -f1)"
+          notes="Core: $source@$revision"
+
+          if ! gh release view "$SDK_TAG" --json id > /dev/null; then
+            gh release create "$SDK_TAG" --verify-tag --draft --title "$SDK_TAG" --notes "$notes"
+          fi
+          release="$(gh release view "$SDK_TAG" --json databaseId,isDraft,body)"
+          jq -e --arg notes "$notes" '.body == $notes' <<< "$release" > /dev/null
+          id="$(jq -r '.databaseId' <<< "$release")"
+          draft="$(jq -r '.isDraft' <<< "$release")"
+          matching_asset() {
+            gh api "repos/$GITHUB_REPOSITORY/releases/$id/assets" | jq -c --arg name "$filename" '.[] | select(.name == $name)'
+          }
+          uploaded="$(matching_asset)"
+          if [[ "$draft" == true && -n "$uploaded" ]] && jq -e '.state == "starter"' <<< "$uploaded" > /dev/null; then
+            # GitHub can retain a starter asset if an upload was interrupted.
+            asset_id="$(jq -r '.id' <<< "$uploaded")"
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+            uploaded=""
+          fi
+          if [[ -z "$uploaded" && "$draft" == true ]]; then
+            gh release upload "$SDK_TAG" "$asset"
+            uploaded="$(matching_asset)"
+          fi
+          jq -en --argjson asset "${uploaded:-null}" --arg digest "$digest" \
+            '$asset.state == "uploaded" and $asset.digest == $digest' > /dev/null
+          if [[ "$draft" == true ]]; then
+            gh release edit "$SDK_TAG" --draft=false
+          fi

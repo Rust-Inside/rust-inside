@@ -1,0 +1,41 @@
+name: Publish an iOS Swift package
+description: Publish the package from the build job as an immutable SwiftPM tag
+inputs:
+  tag:
+    description: Core version tag (vX.Y.Z)
+    required: true
+  revision:
+    description: Source commit reported by the build job
+    required: true
+  repository:
+    description: SDK repository reported by the build job
+    required: true
+  ssh-key:
+    description: Write deploy key for the SDK repository
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/download-artifact@v4
+      with:
+        name: rust-inside-swift-package
+        path: ${{ runner.temp }}/ios-package
+    - name: Push the Swift package tag
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        SDK_REPOSITORY: ${{ inputs.repository }}
+        SDK_TAG: ${{ inputs.tag }}
+        SDK_REVISION: ${{ inputs.revision }}
+        PUBLISH_KEY: ${{ inputs.ssh-key }}
+      run: |
+        [[ "$SDK_REPOSITORY" =~ ^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$ ]]
+        umask 077
+        key_dir="$(mktemp -d)"
+        trap 'rm -rf "$key_dir"' EXIT
+        printf '%s\n' "${PUBLISH_KEY:?Missing SDK deploy key}" > "$key_dir/key"
+        unset PUBLISH_KEY
+        gh api meta --jq '.ssh_keys[] | "github.com " + .' > "$key_dir/known_hosts"
+        export GIT_SSH_COMMAND="ssh -F /dev/null -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$key_dir/known_hosts -i $key_dir/key"
+        bash "$GITHUB_ACTION_PATH/../../scripts/sdk/publish-swift-package.sh" \
+          "$RUNNER_TEMP/ios-package" "$SDK_TAG" "$GITHUB_REPOSITORY" "$SDK_REVISION" "git@github.com:$SDK_REPOSITORY.git"

@@ -1,0 +1,51 @@
+plugins {
+    id 'java-library'
+    id 'org.jetbrains.kotlin.jvm' version '2.1.21'
+    id 'ivy-publish'
+}
+
+group = providers.gradleProperty('sdkGroup').get()
+version = providers.gradleProperty('sdkVersion').get()
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
+dependencies {
+    def coroutinesVersion = providers.gradleProperty('sdkCoroutinesVersion').getOrElse('')
+    if (coroutinesVersion) {
+        implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:${coroutinesVersion}"
+    }
+    api 'net.java.dev.jna:jna:5.17.0'
+}
+
+publishing {
+    publications {
+        sdk(IvyPublication) {
+            from components.java
+            configurations {
+                compile {}
+                runtime { extend('compile') }
+                named('default') { extend('runtime') }
+            }
+            descriptor {
+                status = 'release'
+                withXml { asNode().info[0].attributes().remove('publication') }
+            }
+        }
+    }
+}
+
+// GitHub Releases serve the JAR and its standalone Ivy descriptor.
+tasks.withType(GenerateModuleMetadata).configureEach { enabled = false }
+tasks.withType(Jar).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}

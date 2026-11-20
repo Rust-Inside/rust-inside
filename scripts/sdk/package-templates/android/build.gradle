@@ -1,0 +1,39 @@
+plugins {
+    id 'com.android.library' version '8.10.1'
+    id 'org.jetbrains.kotlin.android' version '2.1.21'
+}
+
+def sdkInputs = providers.gradleProperty('sdkInputs').get()
+
+android {
+    namespace providers.gradleProperty('sdkNamespace').get()
+    compileSdk 36
+    ndkVersion '28.1.13356709'
+    ndkPath System.getenv('ANDROID_NDK_HOME')
+
+    defaultConfig {
+        minSdk 23
+        consumerProguardFiles 'consumer-rules.pro'
+    }
+
+    sourceSets {
+        main {
+            java.srcDir "$sdkInputs/kotlin"
+            jniLibs.srcDir "$sdkInputs/jniLibs"
+        }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8
+    }
+}
+
+dependencies {
+    def coroutinesVersion = providers.gradleProperty('sdkCoroutinesVersion').getOrElse('')
+    if (coroutinesVersion) {
+        implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:${coroutinesVersion}"
+    }
+    implementation 'net.java.dev.jna:jna:5.17.0@aar'
+}

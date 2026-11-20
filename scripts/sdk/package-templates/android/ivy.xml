@@ -1,0 +1,16 @@
+<ivy-module version="2.0">
+    <info organisation="@GROUP@" module="@ARTIFACT@" revision="@VERSION@" />
+    <configurations>
+        <conf name="default" visibility="public" />
+    </configurations>
+    <publications>
+        <artifact name="@ARTIFACT@" type="aar" ext="aar" conf="default" />
+    </publications>
+    <dependencies>
+        @COROUTINES_DEPENDENCY@
+        <dependency org="org.jetbrains.kotlin" name="kotlin-stdlib" rev="2.1.21" conf="default->default" />
+        <dependency org="net.java.dev.jna" name="jna" rev="5.17.0" conf="default->default">
+            <artifact name="jna" type="aar" ext="aar" />
+        </dependency>
+    </dependencies>
+</ivy-module>

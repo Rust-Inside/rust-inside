@@ -1,0 +1,96 @@
+name: Distribute Rust SDK packages
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: SDK version in X.Y.Z form
+        type: string
+        required: true
+      backend:
+        description: Backend selection (node, jvm or direct Rust crate)
+        type: string
+        required: true
+      backend_repository:
+        description: GitHub repository for the backend package (Node and JVM)
+        type: string
+      ios_repository:
+        description: GitHub repository for the Swift package
+        type: string
+      android_repository:
+        description: GitHub repository for the Android package
+        type: string
+      web_repository:
+        description: GitHub repository for the web package
+        type: string
+      flutter_repository:
+        description: GitHub repository for the Flutter mobile package
+        type: string
+      dry_run:
+        description: Check the package inputs and print the destinations
+        type: boolean
+        default: false
+    secrets:
+      tools_token:
+        description: GitHub token with Contents read access to the Rust Inside tools repository
+      distribution_token:
+        description: GitHub token with Contents write access to the destination repositories
+
+permissions:
+  contents: read
+
+jobs:
+  distribute:
+    if: inputs.backend_repository || inputs.ios_repository || inputs.android_repository || inputs.web_repository || inputs.flutter_repository
+    runs-on: ubuntu-latest
+    concurrency:
+      group: rust-inside-distribute-${{ inputs.version }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          token: ${{ secrets.tools_token || secrets.RUST_INSIDE_TOOLS_TOKEN || github.token }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - if: inputs.backend_repository
+        uses: actions/download-artifact@v4
+        with:
+          name: rust-inside-backend
+          path: ${{ runner.temp }}/sdk-artifacts/rust-inside-backend
+      - if: inputs.ios_repository
+        uses: actions/download-artifact@v4
+        with:
+          name: rust-inside-ios
+          path: ${{ runner.temp }}/sdk-artifacts/rust-inside-ios
+      - if: inputs.android_repository
+        uses: actions/download-artifact@v4
+        with:
+          name: rust-inside-android
+          path: ${{ runner.temp }}/sdk-artifacts/rust-inside-android
+      - if: inputs.web_repository
+        uses: actions/download-artifact@v4
+        with:
+          name: rust-inside-web
+          path: ${{ runner.temp }}/sdk-artifacts/rust-inside-web
+      - if: inputs.flutter_repository
+        uses: actions/download-artifact@v4
+        with:
+          name: rust-inside-flutter
+          path: ${{ runner.temp }}/sdk-artifacts/rust-inside-flutter
+      - name: Distribute one core version to the destination repositories
+        env:
+          RUST_INSIDE_VERSION: ${{ inputs.version }}
+          RUST_INSIDE_SOURCE: ${{ github.repository }}@${{ github.sha }}
+          RUST_INSIDE_DRY_RUN: ${{ inputs.dry_run }}
+          RUST_INSIDE_BACKEND: ${{ inputs.backend }}
+          BACKEND_REPOSITORY: ${{ inputs.backend_repository }}
+          IOS_REPOSITORY: ${{ inputs.ios_repository }}
+          ANDROID_REPOSITORY: ${{ inputs.android_repository }}
+          WEB_REPOSITORY: ${{ inputs.web_repository }}
+          FLUTTER_REPOSITORY: ${{ inputs.flutter_repository }}
+          RUST_INSIDE_RELEASE_TOKEN: ${{ secrets.distribution_token }}
+        run: node scripts/sdk/distribute.mjs "$RUNNER_TEMP/sdk-artifacts"

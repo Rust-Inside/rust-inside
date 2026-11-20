@@ -1,0 +1,130 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Rust Inside SDK release",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["backend"],
+  "oneOf": [{ "required": ["api"] }, { "required": ["exports"] }, { "required": ["uniffi"] }],
+  "allOf": [{
+    "if": { "required": ["uniffi"] },
+    "then": {
+      "not": { "anyOf": [{ "required": ["name"] }, { "required": ["crate"] }] },
+      "properties": { "repositories": { "properties": {
+        "android": { "type": "null" }, "flutter": { "type": "null" },
+        "web": { "type": "null" }, "backend": { "type": "null" }
+      } } }
+    }
+  }],
+  "properties": {
+    "$schema": { "type": "string", "minLength": 1 },
+    "backend": {
+      "type": "string",
+      "enum": ["node", "jvm", "rust"],
+      "description": "서버 팀이 사용할 패키지를 선택합니다. node는 Node.js용 npm 패키지, jvm은 Kotlin/JVM용 JAR, rust는 Cargo에서 직접 참조하는 원본 코어입니다."
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "description": "SDK 패키지 이름입니다. 생략하면 Cargo 패키지 이름에서 파생합니다."
+    },
+    "crate": {
+      "type": "string",
+      "pattern": "^(?!/)(?:.*/)?Cargo\\.toml$",
+      "default": "Cargo.toml",
+      "description": "이 설정 파일을 기준으로 라이브러리 crate의 Cargo.toml을 가리키는 상대 경로입니다."
+    },
+    "repositories": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "description": "주소를 지정한 플랫폼만 빌드하고 배포합니다. 전체를 생략하거나 null 또는 빈 객체로 두면 배포를 건너뜁니다.",
+      "properties": {
+        "backend": { "$ref": "#/definitions/repository" },
+        "ios": { "$ref": "#/definitions/repository" },
+        "android": { "$ref": "#/definitions/repository" },
+        "flutter": { "$ref": "#/definitions/repository" },
+        "web": { "$ref": "#/definitions/repository" }
+      }
+    },
+    "api": {
+      "type": "string",
+      "pattern": "^(?!/).+\\.rs$",
+      "description": "crate의 Cargo.toml을 기준으로 pub mod api의 소스 파일을 지정합니다. 인라인 api는 crate 루트 파일을 지정합니다. 이 모듈과 공개 하위 모듈의 선언에서 플랫폼별 바인딩을 생성합니다."
+    },
+    "uniffi": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["crate"],
+      "properties": {
+        "crate": { "type": "string", "pattern": "^(?!/)(?:.*/)?Cargo\\.toml$" }
+      },
+      "description": "기존 UniFFI crate의 공개 API를 그대로 iOS Swift 패키지로 배포합니다. crate는 설정 파일 기준 상대 경로입니다."
+    },
+    "exports": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/definitions/export" }
+    }
+  },
+  "if": { "properties": { "backend": { "const": "rust" } } },
+  "then": { "properties": { "repositories": { "type": ["object", "null"], "properties": { "backend": { "type": "null" } } } } },
+  "definitions": {
+    "repository": {
+      "type": ["string", "null"],
+      "pattern": "^\\s*(?:[hH][tT][tT][pP][sS]://[gG][iI][tT][hH][uU][bB]\\.[cC][oO][mM]/)?[A-Za-z0-9][A-Za-z0-9-]*/(?!\\.{0,2}\\.git/?\\s*$|\\.{1,2}/?\\s*$)[A-Za-z0-9._-]+/?\\s*$",
+      "examples": ["team/catalog-ios", "https://github.com/team/catalog-ios", null],
+      "description": "배포할 GitHub 레포의 owner/name 또는 HTTPS 주소입니다. 생략하거나 null로 두면 이 플랫폼을 건너뜁니다."
+    },
+    "snakeName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+      "description": "Rust 예약어를 제외한 snake_case 이름입니다."
+    },
+    "valueType": {
+      "type": "string",
+      "enum": [
+        "bool", "i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64",
+        "f32", "f64", "String", "Vec<u8>", "Vec<u32>", "Vec<String>"
+      ]
+    },
+    "parameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "$ref": "#/definitions/snakeName" },
+        "type": { "$ref": "#/definitions/valueType" }
+      }
+    },
+    "export": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z_0-9]*(?:::[A-Za-z_][A-Za-z_0-9]*)*$",
+          "description": "라이브러리 루트에서 접근 가능한 공개 Rust 함수의 경로입니다."
+        },
+        "name": { "$ref": "#/definitions/snakeName" },
+        "platforms": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["app", "web", "ios", "android", "flutter", "server"] },
+          "description": "이 함수를 제공할 패키지입니다. app은 iOS·Android·Flutter이며 server는 Node 또는 JVM입니다. 생략하면 모든 패키지에 공개합니다."
+        },
+        "args": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/definitions/parameter" },
+          "description": "Rust 함수의 매개변수를 선언 순서대로 작성합니다."
+        },
+        "returns": {
+          "anyOf": [{ "$ref": "#/definitions/valueType" }, { "const": "()" }],
+          "default": "()"
+        }
+      }
+    }
+  }
+}
